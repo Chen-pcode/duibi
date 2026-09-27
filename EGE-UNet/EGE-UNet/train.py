@@ -201,6 +201,13 @@ def main(config):
             os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-loss{min_loss:.4f}.pth')
         )
 
+        # 额外保存一份固定路径的最终最佳权重，供评估脚本直接引用（无需时间戳目录名）。
+        import shutil
+        shutil.copy(
+            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-loss{min_loss:.4f}.pth'),
+            'best_{}.pth'.format(config.datasets)
+        )
+
 
 if __name__ == '__main__':
     config = setting_config
