@@ -1,0 +1,2521 @@
+# Source PDF: E:\paper\05-paper-mamba\UCA-MNet\2.An_Ultra-Lightweight_Cross-scale_Attention_Mamba_Network_for_Accurate_Skin_Lesion_Segmentation.pdf
+# Pages: 14
+
+
+================================================================================
+===== PAGE 1 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+1
+
+An Ultra-Lightweight Cross-scale Attention
+
+Mamba Network for Accurate Skin Lesion
+
+Segmentation
+
+Razan Alharith, Jiashu Zhang and Chengqiang Zhao
+
+Abstract— Accurate skin lesion segmentation is essen-
+tial for the early detection and effective management of
+skin cancer. Existing deep learning architectures are con-
+strained by a persistent computational–precision trade-off:
+models either require heavy computation that limits prac-
+tical deployment, or accept reduced accuracy when run-
+ning in resource-limited environments. Recent approaches
+reach strong performance by integrating advanced mod-
+ules, but this also introduces complexity that restricts
+practical use. We address this limitation with the Cross-
+scale Attention Mamba Network (UCA-MNet), a hierarchi-
+cal encoder–decoder that integrates three components:
+a multi-scale feature encoder, a precision-focused fusion
+decoder, and a Feature Compression and Fusion Mod-
+ule (FCFM). The central component is the Multi-Scale
+Module (MSM), which uses a bidirectional Mamba (Bi-
+Mamba) to model long-range spatial dependencies with
+linear computational complexity, a clear advantage over
+the quadratic cost of transformer methods. Combined with
+Cross-Scale Attention (CSA) and Pyramidal Squeeze At-
+tention (PSA), UCA-MNet captures both fine-grained local
+textures and global contextual information. Experiments
+on the ISIC-2017, ISIC-2018, and PH2 benchmarks show
+that UCA-MNet reaches F1 scores of 0.8254, 0.8814, and
+0.9202, and mIoU scores of 0.8180, 0.8515, and 0.8604
+respectively, using only 0.33 million parameters and 4.3
+GFLOPs. This makes UCA-MNet about 83× smaller than
+VM-UNET, a leading existing model, while achieving com-
+petitive accuracy. The findings indicate that effective med-
+ical image segmentation can be achieved with much lower
+computational requirements, supporting deployment in
+resource-constrained environments. The code is available
+at: https://github.com/razanharith/UCA-MNet
+
+Index Terms— Lightweight model, Skin lesion segmenta-
+tion, Mamba, State Space Models (SSM), Attention Mecha-
+nism, Feature Fusion, Hybrid Architecture.
+
+I. INTRODUCTION
+S
+
+KIN cancer remains a major global health concern and
+is among the most commonly diagnosed cancers world-
+wide [1]. It is primarily categorized into melanoma and non-
+melanoma types. Melanoma, though accounting for only about
+1% of all skin cancer cases, has a notably high fatality rate.
+
+Razan
+Alharith,
+Jiashu
+Zhang
+and
+Chengqiang
+Zhao
+are
+with
+the
+School
+of
+Computing
+and
+Artificial
+Intelligence,
+Southwest
+Jiaotong
+University,
+Chengdu
+611756,
+China
+(e-mail:
+razanalharith@my.swjtu.edu.cn;
+jszhang@home.swjtu.edu.cn
+;
+zhaocq2019@163.com).
+
+In the United States alone, it was estimated to cause approxi-
+mately 100,640 new cases and 8,290 deaths in 2024 [2], [3].
+The rising incidence, largely attributed to increased ultraviolet
+(UV) radiation exposure, highlights the urgent need for more
+effective and accessible diagnostic solutions [2]. Currently,
+skin lesion diagnosis relies heavily on the visual and dermo-
+scopic expertise of clinicians [4], [5]. This approach, however,
+is subjective, experience-dependent, and time-consuming. The
+gold standard diagnosis via biopsy and histopathology, while
+accurate, is invasive, costly, and can delay timely treatment.
+These challenges are particularly pronounced in resource-
+limited settings and point to the need for objective, automated,
+scalable diagnostic tools that can expand access to quality skin
+cancer screening.
+In response, deep learning, especially Convolutional Neural
+Networks (CNNs), has shown tremendous promise in an-
+alyzing dermoscopic images with accuracy comparable to
+human experts [6], [7]. Despite this progress, widespread
+clinical adoption remains held back by the heavy computa-
+tional resources these models require. Typically, state-of-the-
+art architectures contain millions of parameters and demand
+high processing power, which limits their feasibility in real-
+world clinical environments that often experience resource
+limitations due to operational constraints [8]. These settings,
+which include primary care offices, rural clinics, and health
+centers in low and middle income countries (LMICs), do not
+necessarily have access to high performance GPU servers.
+They can also encompass point-of-care (POC) and mobile
+health (mHealth) applications where the privacy of data and
+network instability limit the potential to use cloud-based
+inference [9], [10]. This implies that the models must execute
+on non-specialized local hardware. This calls for a computa-
+tionally efficient architecture with few parameters (to minimize
+memory use) and few FLOPs (for fast inference), where low
+latency and accessibility are critical. As one illustration, entry-
+level smartphones commonly used in telemedicine applications
+in LMICs typically allocate only 100–200MB for individual
+application processes, so the difference between a 1.3MB
+model (0.33M parameters) and a 5.5MB model (1.38M param-
+eters) is decisive for deployment alongside imaging libraries
+and user interface components. The key challenge, then, is to
+develop models that maintain high accuracy while remaining
+small enough and fast enough for large-scale deployment.
+Existing lightweight models often trade architectural complex-
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 2 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+2
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+ity for size. This simplification typically yields less precise
+boundary detection and weaker multi-scale feature representa-
+tion, both critical for accurately segmenting the diverse shapes
+and sizes of skin lesions [11]–[13]. Many such models also
+lack the capacity to capture long-range spatial dependencies,
+a strength of modern Transformer-based architectures, and
+therefore miss essential global context about the lesion. This
+gap reveals a pressing need for architectures that are both
+computationally efficient and diagnostically reliable. Beyond
+computational constraints, other challenges persist in skin
+lesion segmentation. Lesions often have irregular shapes, vary-
+ing sizes, and indistinct boundaries, which complicates fine-
+grained feature extraction and leads to segmentation errors.
+Modeling long-range dependencies is also vital for a complete
+understanding of the lesion context and affects overall segmen-
+tation quality. A lightweight model capable of detailed feature
+extraction and long-range dependency modeling is therefore
+needed to support accurate, low-latency clinical applications.
+
+To address these challenges, we propose the Cross-scale
+Attention Mamba Network (UCA-MNet), a lightweight
+framework tailored for skin lesion segmentation. UCA-MNet
+combines the local feature extraction strengths of CNNs
+with the efficient global context modeling of a Mamba-
+based State Space Model (SSM). It introduces a Multi-Scale
+Module (MSM) built around a bidirectional Mamba (Bi-
+Mamba), which captures long-range dependencies with linear
+computational complexity. This avoids the quadratic cost of
+conventional Transformers and lets UCA-MNet deliver wide
+contextual understanding within an architecture small enough
+for clinical deployment. The proposed UCA-MNet follows a
+U-shaped encoder–decoder design with modules that target
+both accuracy and efficiency: a hierarchical feature encoder, a
+multi-scale fusion decoder built on the MSM, and a Feature
+Compression and Fusion Module (FCFM), which together
+extract and integrate rich multi-scale contextual information.
+This design advances precise medical image segmentation
+and provides a practical framework for automated diagnostic
+systems that can support clinicians in timely decision-making.
+Our key contributions are as follows:
+
+1) A Hierarchical Encoder is proposed for the efficient ex-
+traction of multi-scale features. Each Encoder Block (E-
+Block) is designed with parallel paths combining query
+and key projections alongside an expansion convolution,
+which are further refined by Squeeze-and-Excitation
+(SE) blocks. Spatial details are preserved through skip
+connections, enabling the effective capture of complex
+patterns.
+2) A Multi-Scale Module (MSM), forming a central com-
+ponent of both encoder and decoder, is developed by in-
+tegrating a bidirectional Mamba (Bi-Mamba). The mod-
+ule captures long-range spatial dependencies with linear
+complexity and is more efficient than transformer-based
+methods. Cross-Scale Attention (CSA) and Pyramidal
+Squeeze Attention (PSA) capture fine-grained, context-
+aware features across multiple scales, which improves
+segmentation performance.
+3) A Multi-Scale Fusion Decoder is designed to reconstruct
+
+segmentation maps by combining abstract encoder fea-
+tures with progressively restored spatial details. Each
+Decoder Block (D-Block) fuses high-resolution features
+carried by skip connections with upsampled features
+from previous layers, blending semantic context and spa-
+tial information. The Feature Compression and Fusion
+Module (FCFM) aggregates outputs from all decoder
+blocks and refines the concatenated multi-scale features
+through convolution operations, producing a coherent
+feature map for the final segmentation.
+4) UCA-MNet is validated through extensive comparisons
+with state-of-the-art methods. Competitive mean Inter-
+section over Union (mIoU) and F1 scores are achieved
+across multiple benchmark datasets. This performance
+is attained with only 0.33 million parameters and 4.3
+GFLOPs, showing the model’s computational efficiency
+and its potential for deployment in resource-constrained
+environments.
+The remainder of this paper is organized as follows. Sec-
+tion II reviews related work, while Section III details the
+proposed network architecture. Sections IV and V present
+the experimental results and comparative analysis. Section VI
+discusses the limitations of the current work and outlines
+directions for future research. Finally, Section VII concludes
+the paper.
+
+II. RELATED WORK
+This section reviews foundational and contemporary ap-
+proaches in skin lesion segmentation. We first discuss the evo-
+lution of deep learning models in this domain, then examine
+the need for lightweight architectures and existing strategies.
+We then turn to recent shifts toward models for long-range
+dependency modeling, followed by a review of attention and
+fusion mechanisms important for precise segmentation.
+
+A. Deep Learning for Skin Lesion Segmentation
+
+The automated segmentation of skin lesions has progressed
+from traditional image processing techniques to deep learning-
+based methods [14]. Early approaches based on thresholding,
+region-growing, or edge detection often struggled with the
+significant visual variance of lesions [15]. The advent of deep
+learning, particularly Fully Convolutional Networks (FCNs)
+[16], marked a significant turning point in the field.
+The U-Net architecture [17], with its iconic encoder-decoder
+structure and skip connections, became the de facto standard,
+enabling precise localization by fusing semantic information
+with high-resolution spatial details. Numerous variants have
+since been proposed. U-Net++ [18] introduced nested and
+dense skip connections to improve feature fusion, while others
+have integrated components from ResNet and DenseNet to
+strengthen feature extraction [19]. More recently, Transformer-
+based models like FAT-Net [20] and SkinFormer [21] have
+used self-attention mechanisms to better capture global con-
+text. Despite their high accuracy, these advanced models are
+often computationally intensive, which limits their practical
+deployment. Purely convolutional models also continue to
+struggle with the long-range dependencies needed to interpret
+global lesion features such as asymmetry.
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 3 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+3
+
+(a)
+
+0.85
+
+0.80
+
+0.75
+
+H2Former
+
+mIoU
+
+mIoU
+
+VM-UNET
+
+0.70
+
+VM-UNET-V2
+
+HED
+
+EMCADNet-b0
+
+0.65
+
+CMUNext
+
+Rolling_Unet_S
+
+UNext
+
+0.60
+
+ShuffleNetV2
+
+LightMUNet
+
+UCA-MNet (Ours)
+
+0.55
+
+100
+101
+
+Parameters (millions)
+
+(b)
+
+0.85
+
+0.80
+
+0.75
+
+H2Former
+
+VM-UNET
+
+0.70
+
+VM-UNET-V2
+
+HED
+
+EMCADNet-b0
+
+0.65
+
+CMUNext
+
+Rolling_Unet_S
+
+UNext
+
+0.60
+
+ShuffleNetV2
+
+LightMUNet
+
+UCA-MNet (Ours)
+
+0.55
+
+100
+101
+
+GFLOPs
+
+Fig. 1: Comparison with other models on ISIC-2017. (a) Params versus mIoU. (b) GFLOPs versus mIoU.
+
+B. Lightweight Architectures for Medical Imaging
+
+The successful deployment of deep learning models in clini-
+cal settings, especially on mobile or edge devices, is contingent
+on their computational efficiency. This has driven research
+into lightweight architectures designed to minimize model
+size, memory footprint, and inference time, often measured by
+trainable parameters and Floating Point Operations (FLOPs).
+A common strategy for creating lightweight models is the
+use of depth-wise separable convolutions, famously employed
+by MobileNet [8]. Other approaches, such as those seen in
+MALU-Net [22] and ULFAC [23], have adapted these prin-
+ciples for medical imaging. While these methods successfully
+reduce computational load, they often do so by simplifying the
+network’s architecture. This can lead to a fundamental trade-
+off: the gain in efficiency may come at the cost of reduced
+representational power, potentially compromising the model’s
+ability to learn complex features and achieve the high accuracy
+required for medical diagnosis.
+
+C. Advancements in Long-Range Dependency Modeling
+
+A primary limitation of traditional CNNs is their restricted
+receptive field, making it difficult to model long-range spatial
+relationships. Vision Transformers (ViTs) [24] addressed this
+by using a self-attention mechanism to capture global context,
+leading to significant performance gains. The self-attention
+mechanism, however, has a computational complexity of
+O(N 2) in the input sequence length, making Transformers
+expensive and slow for high-resolution medical images.
+A recent development that addresses this limitation is the
+emergence of State Space Models (SSMs), particularly Mamba
+[25]. Mamba is a new class of sequence model that captures
+long-range dependencies with O(N) complexity. This opens
+an opportunity to build architectures with the global con-
+text modeling of Transformers inside a much more efficient,
+lightweight framework. Our work, UCA-MNet, is designed
+
+to take advantage of this development, building a dedicated
+segmentation architecture around the Mamba framework.
+
+D. Attention and Multi-Scale Fusion for Precise
+Segmentation
+
+Precise lesion segmentation, particularly at the boundaries,
+requires a model that processes and integrates features from
+multiple scales. The U-Net’s skip connections provided the
+foundational blueprint for this multi-scale fusion. Attention
+mechanisms then extended this by letting the model dynami-
+cally focus on the most salient features.
+Channel
+attention
+strategies,
+such
+as
+the
+Squeeze-and-
+Excitation (SE) block [26], recalibrate feature maps to em-
+phasize important channels. More complex spatial attention
+mechanisms help the model focus on critical regions of
+an image. Combining such mechanisms effectively with a
+long-range backbone like Mamba presents a new challenge.
+UCA-MNet addresses this with a Multi-Scale Module (MSM)
+that combines Cross-Scale Attention (CSA) and Pyramidal
+Squeeze Attention (PSA) directly with a Bi-Mamba block.
+This integration lets the model focus on important features
+across different scales while also considering the lesion’s
+global structure, producing precise boundary delineation with-
+out a separate, post-hoc edge detection module.
+
+III. METHODS
+
+This section presents the structure and design details of
+the Cross-scale Attention Mamba Network (UCA-MNet). We
+describe the techniques used to keep UCA-MNet lightweight,
+with only 0.33 M trainable parameters, while reaching state-of-
+the-art results among other lightweight models and competitive
+performance against deeper, heavier architectures, as shown in
+Fig. 2.
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 4 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+4
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+(A)
+(B)
+
+E-Block
+
+D-Block
+
+E-Block
+
+Conv(k1,c/4)
+
+D1
+
+D-Block
+
+E-Block
+
+D2
+
+(C)
+
+D-Block
+
+FCFM
+
+Conv(k1,d2)
+
+Conv(k1,d1)
+
+D1 D2 D3 D4
+
+Concat
+
+Conv(k1)
+Conv(k1)
+Conv(k1)
+
+Q Proj 
+MP+Conv(k1)
+K Proj 
+Conv(k3,d2)
+
+D3
+
+D-Block
+
+E-Block
+
+if True
+
+Conv(k1)
+
+D4
+
+Yes
+No
+
+SE
+
+FCFM
+
+Conv(k1)
+
+Conv(k1)
+
+MSM
+
+Conv(k1,c*3)
+
+Output mask
+
+Input image
+
+Concat
+
+SE
+
+Concat
+
+MSM
+
+Q Proj
+K Proj
+
+Conv(k1)
+
+𝑽 𝑷𝒓𝒐𝒋 −𝑷𝑹𝒆𝑳𝑼 
+(−𝑷𝑹𝒆𝑳𝑼 (𝒒+ 𝒌))
+
+Concat
+
+Bi-Mamba
+SE
+PSA
+CSA
+
+GN + PReLU
+
+Fig. 2: Overview of the proposed UCA-MNet architecture. (A) The full pipeline: an input image passes through an initial
+convolution, four E-Blocks and four D-Blocks both integrating the shared Multi-Scale Module (MSM) connected via skip
+connections, followed by a Feature Compression and Fusion Module (FCFM) that aggregates all decoder outputs to produce
+the final segmentation map. (B) E-Block internal structure with conditional MSM activation. (C) D-Block, MSM, and FCFM
+internal structure.
+
+A. Image Preprocessing Stage
+
+All input images and ground truth (GT) masks are processed
+through a unified preprocessing pipeline before training, vali-
+dation, and testing. Portrait-oriented images (aspect ratio > 1)
+are rotated by 90 degrees to landscape orientation to enforce
+consistent spatial geometry across all samples. All images and
+masks are then resized to (320 × 320) pixels.
+During training, we apply a set of augmentation transforms to
+improve generalization: random color inversion (applied with
+20% probability), color jittering across brightness, contrast,
+and hue, and random horizontal and vertical flipping (each
+with 50% probability). GT masks are originally provided as
+continuous values in [0,1] and are binarized using a fixed
+threshold of 0.8, assigning lesion pixels a value of 1 and
+background pixels a value of (0.8) To validate this threshold
+choice, we conducted a sensitivity analysis over 50 randomly
+sampled images per dataset, measuring the resulting change
+in lesion area. Mean lesion area deviations remained below
+2% across all datasets (ISIC-2017: 1.4%, ISIC-2018: 1.7%,
+PH2: 1.2%), confirming that the threshold preserves boundary
+integrity. Preprocessed data are batched and shuffled via Py-
+Torch’s DataLoader throughout training to reduce overfitting
+and promote generalization.
+
+B. Network Design
+
+To address the challenges of precise medical image segmen-
+tation, we introduce the Cross-scale Attention Mamba Net-
+work (UCA-MNet). Built on a hierarchical encoder–decoder
+
+backbone, UCA-MNet’s central design choice is the tight cou-
+pling of a Mamba-based attention module that captures both
+fine-grained local texture details and wide global contextual
+information. As illustrated in Fig.(2-A), the network architec-
+ture is composed of three primary components: a hierarchical
+feature encoder, a multi-scale fusion decoder, and a feature ag-
+gregation module. At a high level, features propagate through
+the network as follows. The input image X ∈R3×H×W first
+passes through an initial convolution (kernel size 3, stride 2)
+that halves the spatial dimensions and projects the input to
+the base channel dimension C, producing F0 ∈RC× H
+
+2 × W
+2 .
+This feature map is then processed sequentially by four
+Encoder Blocks (E-Blocks), each of which reduces the spatial
+resolution by half and doubles the channel count, yielding en-
+coder outputs {E1, E2, E3, E4} at resolutions { H
+
+4 , H
+8 , H
+16, H
+32}
+with channel dimensions {C, 2C, 4C, 8C}, respectively. Two
+parallel information pathways emerge from each E-Block:
+(1) the encoder output is forwarded to the next E-Block for
+deeper processing, and (2) it is simultaneously transmitted
+to the corresponding Decoder Block (D-Block) via a skip
+connection. In the decoder, each D-Block receives two inputs:
+the skip-connected features from the corresponding E-Block
+and the upsampled output from the preceding D-Block. It
+fuses these inputs and applies the Multi-Scale Module (MSM)
+to produce decoder outputs {D1, D2, D3, D4}. Finally, the
+Feature Compression and Fusion Module (FCFM) aggregates
+all four decoder outputs by concatenation and compresses
+them through convolution operations to produce the final
+segmentation map Y ∈R1×H×W .
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 5 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+5
+
+1) Hierarchical Encoder for Multi-Scale Feature Extraction:
+The encoder’s principal function within UCA-MNet is to ex-
+tract hierarchical features from the input image across multiple
+scales. After the initial convolution that produces F0, the
+network passes the data through a sequence of four Encoder
+Blocks (E-Blocks).
+
+Each E-Block, shown in Fig.(2-B), processes its input
+feature map Fi−1 along two parallel computational paths. The
+primary path applies a 1×1 convolution to reduce the channel
+dimension to C/4, then generates query (Q) and key (K)
+projections. When the channel dimension exceeds a predefined
+threshold (controlled by the if True condition in Fig. 2-B),
+these projections activate the Multi-Scale Module (MSM),
+which performs context-aware feature extraction incorporating
+long-range dependencies. When the condition is not met, a
+1 × 1 convolution is applied instead, keeping the module
+lightweight at early stages. In parallel, the secondary path
+applies an expansion convolution (kernel size 3, expanding
+to 3 × C), which increases channel capacity and improves
+the model’s ability to represent complex features. The outputs
+from both paths are concatenated along the channel dimen-
+sion and refined using a Squeeze-and-Excitation (SE) block,
+which recalibrates channel importance through global average
+pooling followed by two fully connected layers. The refined
+feature map Ei serves two purposes: it is forwarded to the
+next E-Block for continued hierarchical encoding, and it is
+simultaneously transmitted to the corresponding D-Block via
+a skip connection, preserving fine-grained spatial details for
+the decoder.
+
+2) Multi-Scale Fusion Decoder: The decoder reconstructs
+the segmentation map by combining abstract, high-level en-
+coder features with progressively restored spatial details. This
+process is achieved through a series of four Decoder Blocks
+(D-Blocks), each integrated with the Multi-Scale Module
+(MSM).
+
+a) D-Block Structure: As depicted in Fig.(2-C), each D-
+Block at level i receives two inputs: (1) the skip-connected
+features Ei from the corresponding E-Block, and (2) the
+upsampled features ˆDi+1 from the preceding (deeper) D-
+Block. For the deepest D-Block (i = 4), the second input is
+the final encoder output E4 itself. The skip-connected features
+Ei are first refined by two parallel dilated convolutions with
+dilation rates d1 and d2, which expand the effective receptive
+field before fusion. These enhanced features are concatenated
+and combined with ˆDi+1 through element-wise addition. The
+fused representation then passes through the MSM via query
+and key projections, followed by a 1×1 convolution, producing
+the decoder output Di. This fusion strategy ensures that rich
+semantic context from deeper layers is integrated with fine-
+grained spatial information from the encoder at every decoding
+step.
+
+b) Multi-Scale Module (MSM): The Multi-Scale Module
+(MSM) serves as the core computational unit shared by both
+the encoder and decoder. It is activated when the input feature
+map’s channel dimension exceeds the threshold, ensuring com-
+putational resources are allocated where multi-scale reasoning
+is most beneficial. Internally, as shown in the MSM detail of
+Fig. 2, the module processes features through the following
+
+pipeline. Given query (Q) and key (K) projections from
+the parent block, a value representation V is first computed
+as V = −PReLU(−PReLU(Q + K)), which introduces
+non-linear feature interaction between the two projections.
+This value map V is then processed sequentially through
+four sub-components: (1) Cross-Scale Attention (CSA), which
+captures inter-scale feature relationships by computing atten-
+tion weights across features at different spatial scales; (2)
+Pyramidal Squeeze Attention (PSA), which extracts multi-scale
+spatial information through parallel pooling at multiple kernel
+sizes, enabling the model to attend to features at varying
+granularities; (3) Squeeze-and-Excitation (SE), which recali-
+brates channel-wise responses; and (4) Bidirectional Mamba
+(Bi-Mamba), which models long-range spatial dependencies
+by scanning the feature sequence in both forward and back-
+ward directions with linear computational complexity O(N),
+avoiding the quadratic cost O(N 2) of transformer-based self-
+attention. The output is stabilized by Group Normalization
+(GN) followed by PReLU activation. This sequential design
+allows the MSM to capture fine-grained local textures (via
+CSA and PSA), channel-wise saliency (via SE), and global
+spatial context (via Bi-Mamba) within a single, lightweight
+module.
+
+3) Feature Compression and Fusion Module (FCFM): The
+final component of the UCA-MNet architecture is the Feature
+Compression and Fusion Module (FCFM), which aggregates
+information across all decoder scales into a unified segmenta-
+tion prediction. The four D-Block outputs {D1, D2, D3, D4}
+represent features at different spatial resolutions. The FCFM
+first upsamples all outputs to the same spatial resolution
+(matching D1) and concatenates them along the channel
+dimension to form a full multi-scale representation Dcat ∈
+R(C1+C2+C3+C4)× H
+
+4 × W
+4 . A series of 1 × 1 convolutions then
+compresses and fuses these features into a single coherent
+feature map. This fused output is projected to a single channel
+and upsampled to the original input resolution, producing
+the final segmentation map Y ∈R1×H×W . By aggregating
+features from all decoder levels, the FCFM ensures that
+the final prediction benefits from both high-level semantic
+understanding (from deeper D-Blocks) and fine spatial detail
+(from shallower D-Blocks).
+
+C. Loss Functions
+
+To train the network for accurate skin lesion segmentation,
+we use a composite loss function that combines pixel-level and
+region-based components. This combination addresses class
+imbalance and improves boundary precision. Our total loss,
+Ltotal (3), integrates Binary Cross-Entropy (BCE) Loss, Dice
+Loss, and Intersection over Union (IoU) Loss with appropriate
+weighting.
+
+a) Binary Cross-Entropy Loss (LBCE): The BCE loss evalu-
+ates the pixel-wise difference between the predicted probabil-
+ity ˆyi and the true label yi for each pixel i within the image.
+It is defined as:
+
+N
+X
+
+LBCE = −1
+
+[yi log(ˆyi) + (1 −yi) log(1 −ˆyi)]
+(1)
+
+N
+
+i=1
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 6 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+6
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+Here, N is the total number of pixels, with yi ∈{0, 1}
+representing background or lesion, respectively.
+
+b) Dice Loss (LDice): The Dice loss measures spatial
+overlap between predicted and ground truth masks and is
+resilient to class imbalance. It is expressed as one minus the
+Dice Similarity Coefficient (DSC):
+
+LDice = 1 −
+2 PN
+i=1 yiˆyi
+PN
+
+(2)
+
+i=1 yi + PN
+
+i=1 ˆyi
+
+Minimizing this loss encourages maximized overlap between
+predictions and labels.
+
+c) Combined Loss Function: The total loss combines the
+three components above to jointly target pixel-level accuracy,
+region overlap, and boundary precision. A weighting factor
+α is applied to the Dice and IoU terms to balance their
+contribution during training; α is initialized to 0.8 and decayed
+by 0.2 every 70 epochs, gradually shifting emphasis toward
+BCE as training progresses. The total loss is formulated as:
+
+Ltotal = LBCE + α (LDice + LIoU)
+(3)
+
+IV. EXPERIMENTS
+This section provides a full overview of the implemen-
+tation, datasets, comparative models, evaluation measures,
+experimental results, ablation studies, and model complexity,
+supported by multiple figures. Results for the comparative
+models were obtained by reimplementation from the available
+code.
+
+A. Implementation Details
+
+a) Datasets: To evaluate the proposed model, we used
+three publicly available and widely adopted benchmarks for
+skin lesion segmentation: ISIC-2017 [27], a public dataset
+of 2,000 dermoscopic images; ISIC-2018 [28], with 3,694
+images; and PH2 [29], with 202 dermoscopic images. These
+three datasets were selected for the following reasons. First,
+they are the most widely used benchmarks in this field; a
+survey of 177 skin lesion segmentation studies [30] reports
+that ISIC-2017 appears in 39.4% of papers, ISIC-2018 in
+21.2%, and PH2 in 18.9%, which makes them the dominant
+evaluation benchmarks and ensures direct comparability with
+published results. Second, they provide scale diversity: dataset
+sizes range from 202 (PH2) to 3,694 (ISIC-2018) images,
+enabling evaluation under both data-limited and data-sufficient
+conditions, which is important for assessing a lightweight
+model’s generalization ability. Third, ISIC-2017 and ISIC-
+2018 provide official pre-defined train/validation/test parti-
+tions, which ensures reproducibility and eliminates variabil-
+ity due to random splitting. Fourth, these datasets exhibit
+clinical diversity, containing images acquired with different
+dermoscopic systems and covering a range of lesion types
+(melanoma, benign nevi, seborrheic keratoses) with varying
+levels of artifacts such as hair occlusion and low contrast,
+which tests the model’s robustness under realistic conditions.
+For our experiments, all images were resized to a standard
+resolution of (320 × 320) pixels, and the datasets have been
+used with the following pre-existing train/validation/test splits
+as provided in Table I.
+
+TABLE I: DATASETS DETAILS
+
+Datasets
+Number of Images
+
+Total
+Train
+Valid
+Test
+
+ISIC-2017
+2,000
+1,250
+150
+600
+ISIC-2018
+3,694
+2,594
+100
+1,000
+PH2
+202
+142
+20
+40
+
+b) Simulation Configuration: Each model in the compar-
+ison, including UCA-MNet, was implemented in PyTorch
+and trained on the three datasets (ISIC-2017, ISIC-2018,
+and PH2) under matched conditions to ensure fairness. The
+Adam optimizer was used with a learning rate of 1 × 10−3,
+β1 = 0.9, β2 = 0.999, a weight decay of 5 × 10−5, and
+a batch size of 4 throughout. For stable convergence, we
+used a ReduceLROnPlateau learning rate scheduler, which
+reduces the learning rate by a factor of 0.8 whenever the
+validation loss fails to improve for 10 consecutive epochs.
+All models were trained for 100 epochs, and the checkpoint
+achieving the highest validation mIoU was retained for final
+testing. Each baseline model was trained using the same data
+preprocessing pipeline, augmentation strategy (augmentation
+probability of 0.9), and loss function (as defined in Sec-
+tion III-C), except where indicated otherwise in the original
+architecture. Specific activation functions, such as PReLU
+and ReLU, are described in our model architecture, with the
+complete implementation details, training scripts, and hyper-
+parameters accessible in our public code repository to support
+the reproduction of results.
+
+c) Experimental Environment: All experiments were con-
+ducted on a workstation running a Windows 11 operating
+system. The hardware consisted of an Intel Core i5-8500 CPU,
+16GB of system RAM, and an NVIDIA GeForce GTX 1070
+GPU with 8GB of VRAM.
+
+B. Comparison With State-of-the-Art models
+
+The benchmark models in this comparative analysis were
+deliberately chosen to cover four distinct architectural cate-
+gories, spanning a parameter range from 1.15M to 33.7M,
+so that UCA-MNet’s efficiency–accuracy trade-off can be
+evaluated against each relevant family:
+
+1) Mamba-based
+models
+(VM-UNET,
+VM-UNET-V2,
+LightMUNet): Since UCA-MNet also builds on the
+Mamba framework, these models are the most direct
+comparisons and let us test whether competitive accu-
+racy can be reached with far fewer parameters (0.33M
+vs. 1.15M–27.43M).
+2) Transformer-based model (H2Former): This represents
+the dominant approach to global context modeling with
+O(N 2) complexity and lets us test UCA-MNet’s claim
+that comparable accuracy is achievable at O(N) com-
+plexity.
+3) Lightweight CNN models (CMUNeXt, UNeXt, Shuf-
+fleNetV2, Rolling Unet S): These represent efficient
+convolutional architectures commonly used for resource-
+constrained deployment, enabling direct comparison of
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 7 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+7
+
+efficiency–accuracy trade-offs within the lightweight
+category.
+4) Specialized architectures (EMCADNet, HED): EM-
+CADNet represents an efficient attention-based decoder
+design, while HED provides a boundary-focused base-
+line relevant to lesion boundary delineation.
+
+To ensure a fair and rigorous comparison, all models were
+reimplemented and evaluated within a unified experimen-
+tal framework using identical preprocessing pipelines, data
+augmentation strategies, training schedules, and evaluation
+protocols as described in Section IV. All baseline models
+were trained using the same Adam optimizer configura-
+tion, learning rate schedule, batch size, and loss function
+to eliminate confounding variables. Model architectures were
+faithfully reproduced based on official implementations or
+detailed specifications from original publications. We assessed
+all models against three primary criteria: model size (number
+of trainable parameters), computational complexity (GFLOPs),
+and segmentation accuracy. Complete training scripts and
+configuration files are publicly available in our code repository
+to ensure full reproducibility. The models are detailed below:
+
+• H2Former [31] introduces a hierarchical hybrid trans-
+former architecture tuned for medical segmentation. It
+combines convolutional layers with multi-scale self-
+attention to capture both local and global context. With
+about 33.7 million parameters and 33.56 GFLOPs, it is
+well-suited to high-resolution segmentation tasks while
+keeping reasonable computational cost.
+
+• VM-UNET [32] (Vision Mamba UNet) is a U-shaped
+architecture that incorporates state space models, specifi-
+cally the Visual State Space (VSS) block, to capture long-
+range contextual information. It features an asymmetric
+encoder-decoder design with patch embedding, merging,
+and expanding operations, supported by simple skip
+connections. This structure balances efficient dependency
+modeling and linear computational complexity, often out-
+performing traditional CNN and Transformer methods in
+segmentation tasks. It has 27.43 million parameters.
+
+• VM-UNET-V2 [33] extends the original VM-UNet by
+improving the VSS block and introducing a Semantics
+and Detail Infusion (SDI) mechanism. This allows tighter
+fusion of low- and high-level features while keeping
+the linear-complexity long-range modeling of the orig-
+inal. Experimental results across several medical image
+datasets show that VM-UNet-V2 reaches competitive
+performance with stronger feature integration. It contains
+23.16 million parameters.
+
+• HED (Holistically-Nested Edge Detection) [34] is primar-
+ily designed for edge detection. It uses deep supervision
+and multi-scale feature fusion to produce precise bound-
+ary localization. With over 14 million parameters, HED
+can be adapted for tasks that require accurate edge-aware
+segmentation.
+
+• EMCADNet [35] is a lightweight yet effective decoder
+tailored for medical image segmentation. It combines
+multi-scale depth-wise convolutions with channel, spatial,
+and large-kernel grouped gated attention mechanisms.
+
+This design strengthens feature representation and high-
+lights salient regions efficiently. When paired with a
+standard encoder, it has 3.92 million parameters and 1.28
+GFLOPs.
+
+• CMUNeXt [36] is a compact convolutional neural net-
+work that uses compound scaling and multi-scale fea-
+ture aggregation to improve segmentation accuracy. It
+combines efficient depthwise separable convolutions with
+new normalization techniques. The result is a model with
+3.15 million parameters and 11.28 GFLOPs, reducing
+computational cost without sacrificing performance.
+
+• Rolling Unet S [37] extends the classic U-Net by in-
+troducing a rolling mechanism that iteratively refines
+feature maps through residual connections. This strategy
+promotes feature reuse and improves gradient flow, lead-
+ing to better segmentation accuracy. The model balances
+complexity and inference speed, containing 1.78 million
+parameters and requiring 3.22 GFLOPs.
+
+• UNeXt [38] presents a hybrid convolutional-MLP archi-
+tecture for medical image segmentation. It begins with
+convolutional layers, followed by tokenized MLP blocks
+that efficiently process and project features while cap-
+turing local dependencies through channel shifting. The
+model uses 1.47 million parameters and 0.57 GFLOPs,
+preserving skip connections to maintain spatial resolution.
+
+• ShuffleNet-v2 [39] is an efficient model developed
+through systematic controlled experiments focused on
+performance across desktop and mobile platforms. This
+compact architecture contains only 1.38 million trainable
+parameters.
+
+• LightMUNet [40] is a lightweight fusion model that
+combines the UNet backbone with features of the Mamba
+model, aiming for efficient medical image segmentation.
+It reduces the parameter count to 1.15 million, enabling
+faster inference while maintaining accuracy on both 2D
+and 3D datasets. This model is designed to balance
+complexity and segmentation effectiveness for practical
+applications.
+
+C. Evaluation Metrics
+
+The experiments were conducted on the datasets described
+above. For each mini-batch, the Recall, Precision, F-score, and
+mean Intersection over Union (mIoU) metrics were generated
+individually. The F-score and mIoU serve as key metrics
+for evaluating the overall performance of the model. These
+values are computed using the factors True Positive (TP), True
+Negative (TN), False Positive (FP), and False Negative (FN).
+
+For all primary results reported in Tables II and III, model
+predictions are binarized at a fixed threshold of 0.5, and
+metrics are computed per-image then averaged across the full
+test set. We additionally report Precision-Recall and ROC
+curves Fig. 4 to characterize performance across a range of
+operating thresholds. The evaluation metrics are defined in
+Eqs. (4–7).
+
+Precision =
+TP
+TP + FP
+(4)
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 8 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+8
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+TABLE II: COMPARISON RESULTS OF ALL MODELS ON ISIC-2017 and ISIC-2018 test datasets.
+
+Model
+ISIC-2017 Dataset
+ISIC-2018 Dataset
+Params
+
+RC
+PR
+F1
+mIoU
+RC
+PR
+F1
+mIoU
+
+H2Former*
+0.8487
+0.8582
+0.8113
+0.7984
+0.9430
+0.8290
+0.8610
+0.8207
+33.7 M
+VM-UNET*
+0.8641
+0.8585
+0.8500
+0.8194
+0.8844
+0.8792
+0.8659
+0.8386
+27.43 M
+VM-UNET-V2*
+0.7331
+0.8646
+0.7593
+0.7645
+0.7979
+0.8405
+0.7848
+0.7631
+23.16 M
+HED*
+0.8027
+0.8592
+0.7781
+0.7772
+0.7956
+0.9281
+0.8155
+0.8015
+14.7 M
+EMCADNet-b0*
+0.8379
+0.8620
+0.8168
+0.8081
+0.9088
+0.8652
+0.8647
+0.8314
+3.92 M
+CMUNext*
+0.8425
+0.8629
+0.8162
+0.8034
+0.8525
+0.8860
+0.8375
+0.8134
+3.15 M
+Rolling Unet S*
+0.8562
+0.8170
+0.7874
+0.7801
+0.8689
+0.8929
+0.8508
+0.8220
+1.78 M
+UNext*
+0.8323
+0.8507
+0.7932
+0.7860
+0.8723
+0.8952
+0.8563
+0.8292
+1.47 M
+ShuffleNetV2*
+0.8332
+0.8519
+0.8002
+0.7899
+0.8631
+0.8982
+0.8504
+0.8256
+1.38 M
+LightMUNet*
+0.7187
+0.8318
+0.7415
+0.7490
+0.8289
+0.7987
+0.7878
+0.7628
+1.15 M
+
+UCA-MNet (Ours)
+0.8063
+0.9204↑
+0.8254↑
+0.8180↑
+0.8834
+0.9211↑
+0.8814↑
+0.8515↑
+0.33 M↓
+
+* This model has been reimplemented; red indicates the best value, while blue denotes the second best.
+
+Recall =
+TP
+TP + FN
+(5)
+
+F-score = 2 × Precision × Recall
+
+Precision + Recall
+(6)
+
+IoU =
+TP
+TP + FN + FP
+(7)
+
+D. Experimental Results
+
+This subsection presents a rigorous comparative analysis of
+the proposed UCA-MNet against a diverse set of state-of-
+the-art lightweight benchmark models. These models target
+efficiency through reduced parameter counts and computa-
+tional cost while keeping strong segmentation performance.
+For a fair and consistent evaluation, all benchmark models
+were carefully reimplemented and trained under a unified
+experimental protocol, following the original authors’ spec-
+ifications wherever possible. A total of 10 well-established
+models were included in this study, covering a range of
+architectural complexities, trainable parameter counts, com-
+putational demands (FLOPs), inference speeds, and overall
+suitability for low-latency deployment. The detailed results in
+Tables II and III clarify the trade-offs between segmentation
+performance, model complexity, and operational efficiency.
+
+E. Qualitative Comparison
+
+After thorough training and evaluation, UCA-MNet consis-
+tently delivers competitive or comparable performance across
+the benchmark datasets (ISIC-2017, ISIC-2018, and PH2)
+when compared to several leading lightweight segmentation
+models. This performance is reflected not only in quantitative
+metrics but also in qualitative visual assessments. Fig. 3
+illustrates segmentation results from UCA-MNet alongside
+selected baseline models. The visual comparisons reveal that
+UCA-MNet often produces more precise lesion boundaries,
+with sharper edge delineation and better preservation of struc-
+tural details, closely matching the ground-truth annotations.
+
+TABLE III: COMPARISON RESULTS OF ALL MODELS
+ON PH2 TEST IMAGES.
+
+Model
+RC
+PC
+F1
+mIoU
+Params
+
+H2Former*
+0.8885
+0.9533
+0.9144
+0.8550
+33.7 M
+VM-UNET*
+0.9335
+0.9233
+0.9235
+0.8712
+27.43 M
+VM-UNET-V2*
+0.9105
+0.9357
+0.9182
+0.8788
+23.16 M
+HED*
+0.9083
+0.9233
+0.9044
+0.8524
+14.71 M
+EMCADNet-b0*
+0.8216
+0.6442
+0.6396
+0.5847
+3.92 M
+CMUNext*
+0.8912
+0.9136
+0.8873
+0.8271
+3.15 M
+Rolling Unet S*
+0.9318
+0.8930
+0.9022
+0.8383
+1.78 M
+UNext*
+0.8773
+0.9536
+0.9079
+0.8514
+1.47 M
+ShuffleNetV2*
+0.9020
+0.9330
+0.9080
+0.8543
+1.38 M
+LightMUNet*
+0.9274
+0.8825
+0.9017
+0.8382
+1.15 M
+
+UCA-MNet (Ours)
+0.9297
+0.9211
+0.9202↑
+0.8604
+0.33 M ↓
+
+* This model has been reimplemented; red indicates the best value,
+while blue denotes the second best.
+
+These qualitative observations are supported by Precision–
+Recall Curves (PRCs) and Receiver Operating Characteristic
+(ROC) curves shown in Fig. ( 4b, 4c, 4a) for PRCs, and Fig.
+( 4e, 4f, 4d) for ROCs, where UCA-MNet consistently leads
+on Area Under the Curve (AUC) across all datasets, indicating
+its accuracy and strength in distinguishing lesion pixels from
+background.
+
+The full set of experiments shows that UCA-MNet reaches
+a strong level of segmentation accuracy while keeping its
+lightweight architecture and low computational cost. The
+model’s stable performance across diverse datasets also points
+to its potential for deployment in diagnostic settings with
+limited computational resources, pending further clinical val-
+idation.
+
+F. Model Complexity
+
+Lightweight networks focus on minimizing model complex-
+ity across three key metrics: floating-point operations (FLOPs),
+number of parameters, and inference time. FLOPs and pa-
+rameter counts provide theoretical measures of computational
+cost and model size, respectively, while inference time reflects
+practical runtime performance during execution. FLOPs and
+parameter values reported in Table IV are computed using the
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 9 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+9
+
+Original image
+Ground Truth
+ShuffleNetv2
+VM-UNET
+MobileNetv3
+HED
+UNeXt
+EMCADNet
+CMUNext
+H2Former
+Rolling_Unet_S
+UCA-MNet
+VM-UNET-V2
+LightMUNet
+
+ISIC-2017
+ISIC-2018
+PH2
+
+Fig. 3: Qualitative segmentation comparison of UCA-MNet and baseline models on PH2, ISIC-2017, and ISIC-2018
+
+1.0
+
+1.0
+
+0.9
+
+0.9
+
+0.8
+
+0.8
+
+0.7
+
+0.7
+
+Precision
+
+Precision
+
+0.6
+
+0.6
+
+H2Former (33.7M)
+VM-UNET (27.43M)
+VM-UNET-V2 (23.16M)
+HED (14.7M)
+EMCADNet-b0 (3.92M)
+CMUNeXt (3.15M)
+Rolling_Unet_S (1.78M)
+UNeXt (1.47M)
+ShuffleNetV2 (1.38M)
+LightMUNet (1.15M)
+UCA-MNet (Ours) (0.33M)
+
+H2Former (33.7M)
+VM-UNET (27.43M)
+VM-UNET-V2 (23.16M)
+HED (14.7M)
+EMCADNet-b0 (3.92M)
+CMUNeXt (3.15M)
+Rolling_Unet_S (1.78M)
+UNeXt (1.47M)
+ShuffleNetV2 (1.38M)
+LightMUNet (1.15M)
+UCA-MNet (Ours) (0.33M)
+
+0.5
+
+0.5
+
+0.4
+
+0.4
+
+0.3
+
+0.3
+
+1.0
+
+0.9
+
+0.8
+
+0.7
+
+Precision
+
+0.6
+
+H2Former (33.7M)
+VM-UNET (27.43M)
+VM-UNET-V2 (23.16M)
+HED (14.7M)
+EMCADNet-b0 (3.92M)
+CMUNeXt (3.15M)
+Rolling_Unet_S (1.78M)
+UNeXt (1.47M)
+ShuffleNetV2 (1.38M)
+LightMUNet (1.15M)
+UCA-MNet (Ours) (0.33M)
+
+0.5
+
+0.4
+
+0.3
+
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0
+Recall
+
+(a) PR Curve: PH2
+
+(b) PR Curve: ISIC2017
+
+1.0
+
+1.0
+
+0.9
+
+0.9
+
+0.8
+
+0.8
+
+True Positive Rate
+
+True Positive Rate
+
+0.7
+
+0.7
+
+H2Former, AUC: 0.9463
+VM-UNET, AUC: 0.9520
+VM-UNET-V2, AUC: 0.9415
+HED, AUC: 0.9384
+EMCADNet-b0, AUC: 0.6908
+CMUNeXt, AUC: 0.9107
+Rolling_Unet_S, AUC: 0.9318
+UNeXt, AUC: 0.9350
+ShuffleNetV2, AUC: 0.9401
+LightMUNet, AUC: 0.9373
+UCA-MNet (Ours), AUC: 0.9475
+
+0.6
+
+0.6
+
+0.5
+
+0.5
+
+0.4
+
+0.4
+
+1.0
+
+0.9
+
+0.8
+
+True Positive Rate
+
+0.7
+
+H2Former, AUC: 0.8642
+VM-UNET, AUC: 0.8869
+VM-UNET-V2, AUC: 0.8423
+HED, AUC: 0.8372
+EMCADNet-b0, AUC: 0.8816
+CMUNeXt, AUC: 0.8694
+Rolling_Unet_S, AUC: 0.8569
+UNeXt, AUC: 0.8558
+ShuffleNetV2, AUC: 0.8628
+LightMUNet, AUC: 0.8435
+UCA-MNet (Ours), AUC: 0.8776
+
+H2Former, AUC: 0.8995
+VM-UNET, AUC: 0.8991
+VM-UNET-V2, AUC: 0.8317
+HED, AUC: 0.8509
+EMCADNet-b0, AUC: 0.8978
+CMUNeXt, AUC: 0.8665
+Rolling_Unet_S, AUC: 0.8699
+UNeXt, AUC: 0.8747
+ShuffleNetV2, AUC: 0.8679
+LightMUNet, AUC: 0.8533
+UCA-MNet (Ours), AUC: 0.9035
+
+0.6
+
+0.5
+
+0.4
+
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0
+False Positive Rate
+
+(d) ROC Curve: PH2
+
+(e) ROC Curve: ISIC2017
+
+Fig. 4: Precision-Recall and ROC curves of UCA-MNet across the ISIC-2017, ISIC-2018, and PH2 datasets.
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 10 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+10
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+formulas in Equations (8) and (9). Inference time is measured
+empirically during code execution on the target hardware.
+
+FLOPs = 2HW(CinK2 + 1)Cout
+(8)
+
+Params = (CinK2 + 1)Cout
+(9)
+
+Table IV compares model complexity and inference effi-
+ciency across architectures. UCA-MNet has a parameter count
+of only 0.33M, the lowest among all compared methods, which
+directly reduces memory overhead and helps deployment
+in resource-constrained settings. Its FLOPs (4.3G) exceed
+those of the most compact models such as ShuffleNetV2
+and Rolling Unet S, but remain far lower than heavyweight
+architectures including H2Former and EMCADNet-b0. The
+per-image inference time of 0.0537s is somewhat higher than
+the simplest baselines such as HED (0.0048s) and Shuf-
+fleNetV2 (0.0087s), which is expected given UCA-MNet’s
+multi-scale feature extraction and attention mechanisms. Even
+so, the resulting throughput of about 18.6 images per second
+is enough for interactive clinical workflows on resource-
+constrained hardware. As shown in Fig. 5, UCA-MNet has
+the best balance between segmentation accuracy and parame-
+ter count among all compared models, confirming that high
+segmentation quality can be sustained without proportional
+growth in model size.
+
+TABLE IV: COMPARISON OF MODEL COMPLEXITY
+
+Model
+Params (M)
+FLOPs (G)
+Time/Image (s)
+
+H2Former
+33.70
+33.56
+0.0259
+VM-UNET
+27.43
+6.26
+0.0225
+VM-UNET-V2
+23.16
+292.10
+0.0270
+HED
+14.70
+15.40
+0.0048
+EMCADNet-b0
+3.92
+1286.62
+0.0158
+CMUNext
+3.15
+11.28
+0.0079
+Rolling Unet S
+1.78
+3.22
+0.0268
+UNext
+1.47
+872.14
+0.0053
+ShuffleNetV2
+1.38
+2.20
+0.0087
+LightMUNet
+1.15
+4.28
+0.0302
+
+UCA-MNet
+0.33↓
+4.30
+0.0537
+
+* This model has been reimplemented; red indicates the best value,
+while blue denotes the second best.
+
+G. Evaluation of UCA-MNet’s Efficiency and
+Segmentation Performance
+
+UCA-MNet has a parameter count of 0.33 million and a
+computational cost of 4.3 GFLOPs, the lowest among all
+compared models, while keeping competitive segmentation
+accuracy across all three benchmark datasets. Detailed results
+are reported in Tables II and III.
+Among Mamba-based models, UCA-MNet offers the best
+balance of compactness and accuracy. VM-UNET and VM-
+UNET-V2 require 27.43M and 23.16M parameters, respec-
+tively 83× and 70× more than UCA-MNet. On ISIC-2017,
+VM-UNET reaches slightly higher scores (F1: 0.8500, mIoU:
+0.8194) than UCA-MNet (F1: 0.8254, mIoU: 0.8180); on
+ISIC-2018, however, UCA-MNet exceeds both VM-UNET
+
+(F1: 0.8659, mIoU: 0.8386) and VM-UNET-V2 (F1: 0.7848,
+mIoU: 0.7631), reaching an F1 of 0.8814 and mIoU of
+0.8515. UCA-MNet also outperforms LightMUNet (1.15M
+parameters) on both ISIC-2017 (mIoU: 0.8180 vs. 0.7490; F1:
+0.8254 vs. 0.7415) and ISIC-2018 (mIoU: 0.8515 vs. 0.7628;
+F1: 0.8814 vs. 0.7878), despite having 3.5× fewer parameters.
+As shown in Fig. 5, UCA-MNet reaches a performance density
+of 250.1 F1% per million parameters, the highest among all
+compared models, confirming that segmentation quality does
+not require proportional growth in model size.
+
+250.1
+
+UCA-MNet (Ours)
+
+LightMUNet
+
+64.5
+
+ShuffleNetV2
+
+58.0
+
+UNeXt
+
+54.0
+
+Rolling_Unet_S
+
+44.2
+
+CMUNeXt
+
+25.9
+
+EMCADNet-b0
+
+20.8
+
+HED
+
+5.3
+
+VM-UNET-V2
+
+3.3
+
+VM-UNET
+
+3.1
+
+H2Former
+
+2.4
+
+0
+50
+100
+150
+200
+250
+300
+
+Performance Density  (F1 % / M-params)
+
+Fig. 5: Performance density (F1% per million parameters)
+across all compared models.
+
+UCA-MNet’s main strength is that it provides accurate seg-
+mentation with a dramatically reduced parameter count, mak-
+ing it much smaller than heavyweight models and more com-
+pact than other lightweight alternatives, including advanced
+Mamba-based networks. This combination makes UCA-MNet
+a strong candidate for real-time applications that demand low
+latency, low memory use, and energy efficiency. By targeting
+both efficiency and accuracy, UCA-MNet proves to be an
+effective tool for challenging medical imaging tasks. It is well
+placed to support early, accessible, and reliable skin cancer
+diagnostics, particularly in mobile health and point-of-care
+contexts. Our findings show that high-quality lesion segmen-
+tation can be reached without relying on large computational
+resources.
+
+H. Implications of UCA-MNet for Automated Skin Lesion
+Diagnosis
+
+The results above have direct consequences for the practical
+deployment of automated skin lesion analysis. UCA-MNet’s
+hierarchical encoding, Multi-Scale Module (MSM), and Fea-
+ture Compression and Fusion Module (FCFM) together pro-
+duce accurate delineation of lesions across a range of sizes,
+shapes, and boundary irregularities, all within a 0.33M param-
+eter budget. At float32 precision, this corresponds to a model
+size of about 1.3 MB, well within the 100–200 MB per-process
+memory budgets typical of entry-level mobile devices used
+in telemedicine and point-of-care settings. With a measured
+throughput of about 18.6 images per second on a consumer-
+grade GPU, UCA-MNet meets the latency requirements of
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 11 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+11
+
+TABLE V: ABLATION STUDY OF UCA-MNET MODULES ON THE ISIC-2017 DATASET.
+
+Module
+Recall
+Precision
+F1
+mIoU
+Params (M)
+FLOPs (G)
+Time/Image (s)
+
+Baseline
+0.6398
+0.5302
+0.5053
+0.5510
+1.26 M
+15.28
+0.0160
+B+MSM
+0.4995
+0.6412
+0.4877
+0.5575
+0.570 M
+6.56
+0.0442
+B+FEM
+0.6436
+0.6710
+0.5122
+0.5783
+0.445 M
+4.92
+0.0295
+B+EEA
+0.6090
+0.6223
+0.4790
+0.5559
+0.554 M
+6.16
+0.0352
+B+ASPP
+0.5597
+0.6085
+0.4512
+0.5424
+0.462 M
+5.98
+0.0214
+
+UCA-MNet (Ours)
+0.8063↑
+0.9204↑
+0.8254↑
+0.8180↑
+0.33 M↓
+4.3↓
+0.0537
+* This model has been reimplemented; red indicates the best value, while blue denotes the second best.
+
+interactive clinical workflows without specialized hardware.
+These properties make it technically feasible to deploy in
+primary care offices, rural clinics, and mobile health devices in
+low- and middle-income countries, where on-device inference
+is required because of data privacy limitations and unstable
+network connectivity.
+
+TABLE VI: REPRODUCIBILITY ANALYSIS OF UCA-
+MNET ACROSS FOUR INDEPENDENT TRAINING RUNS
+ON ISIC-2017.
+
+Run
+Seed
+RC (%)
+PC (%)
+F1 (%)
+mIoU (%)
+
+1
+Random
+80.63
+92.04
+82.54
+81.80
+2
+7
+72.58
+92.14
+79.30
+78.92
+3
+42
+77.19
+91.65
+82.32
+81.23
+4
+99
+77.14
+89.67
+80.95
+80.13
+
+Mean ± Std
+76.89 ± 3.30
+91.38 ± 1.16
+81.28 ± 1.49
+80.52 ± 1.27
+
+All hyper-parameters are identical across runs; only the random seed differs.
+
+I. Ablation Studies
+
+To evaluate the contribution of each architectural component
+in UCA-MNet, we performed an ablation study on the ISIC-
+2017 dataset. We constructed five model variants by selec-
+tively incorporating or omitting key modules, as defined in
+Table V. Baseline denotes a standard convolutional encoder-
+decoder without any proposed modules; B+MSM adds only
+the Multi-Scale Module (comprising Bi-Mamba, CSA, and
+PSA) to the baseline; B+FEM adds the Feature Enhancement
+Module, which implements the dual-path encoder with SE-
+block refinement; B+EEA adds the Efficient Encoder Archi-
+tecture, comprising the hierarchical E-Block structure without
+the MSM; and B+ASPP replaces the MSM with an Atrous
+Spatial Pyramid Pooling module as an alternative multi-scale
+feature extractor. All variants share the same decoder and loss
+function, differing only in the specified encoder component.
+Each variant was trained and evaluated independently under
+identical conditions, with performance assessed using Recall,
+Precision, F1-score, and mean Intersection over Union (mIoU),
+and efficiency measured by parameter count, FLOPs, and
+inference time.
+Table V summarises the results. The Baseline achieves a
+mIoU of 0.5510 and a Recall of 0.6398 but performs well
+below the full architecture. Adding individual modules pro-
+duces mixed results that reveal the architectural dependencies
+within UCA-MNet. B+MSM reduces Recall from 0.6398 to
+
+0.4995 and F1-score from 0.5053 to 0.4877, while B+ASPP
+produces a broader decline across metrics (F1: 0.4512 vs.
+0.5053). These reductions reflect the tight coupling within
+UCA-MNet’s design rather than any module failure: the MSM
+was calibrated to receive multi-scale features from our dual-
+path FEM encoder, so when attached to the generic baseline
+encoder, the Bi-Mamba component receives feature distribu-
+tions that violate its design assumptions, and the absent FCFM
+pathway prevents the global context it produces from reaching
+the decoder. The variants that show partial standalone gains
+B+FEM (improved Precision and F1) and B+EEA (modest
+mIoU gain) interact less tightly with these encoder assump-
+tions, yet their improvements remain limited without the full
+system. The strongest evidence for each component’s necessity
+is the complete architecture itself: UCA-MNet achieves the
+highest performance across all four metrics Recall (0.8063),
+Precision (0.9204), F1-score (0.8254), and mIoU (0.8180)
+while simultaneously requiring the fewest parameters (0.33 M,
+a 73.8% reduction from the baseline’s 1.26 M) and lowest
+FLOPs (4.3 G vs. 15.28 G) of any variant. Removing any com-
+ponent lowers accuracy, yet the complete design costs fewer
+resources than every partial version. The modules work as a
+co-designed system, not as independently stackable blocks.
+
+To verify that the reported results are not attributable to a
+favourable random initialisation, we conducted three further
+training runs using different random seeds (7, 42, 99), holding
+all hyperparameters constant. Table VI reports test-set results
+across all four runs, including the main run. The mean F1-
+score is 81.28±1.49% and the mean mIoU is 80.52±1.27%,
+both with standard deviations below 1.5%, confirming stable
+convergence across initialisations. The higher variance in
+Recall (±3.30%) reflects the known sensitivity of this metric
+to the decision threshold and does not affect the stability of
+F1 or mIoU, which are the primary evaluation metrics. The
+main reported result (F1: 82.54%, mIoU: 81.80%) sits within
+this range, so it is representative rather than a single lucky
+run. Across all four runs, UCA-MNet consistently outperforms
+the best-performing ablation variant (B+FEM, F1 = 51.22%)
+by a minimum margin of +28.08% F1. The advantage of the
+full architecture over every ablation variant is therefore stable
+across random initialisations, not an artefact of seed choice.
+
+The full model’s inference time (0.0537 s per image) is
+higher than the baseline (0.0160 s) despite having substantially
+lower FLOPs (4.3 G vs. 15.28 G). This apparent tension
+arises because FLOPs measure computational work, not wall-
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 12 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+12
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+Failure case (2)
+Ground Truth
+Failure case (1)
+Ground Truth
+UCA-Mnet (Ours)
+UCA-Mnet (Ours)
+
+Fig. 6: Representative failure cases of UCA-MNet on challenging skin lesion images.
+
+clock latency. Two hardware factors account for the differ-
+ence: (i) the grouped convolutions and GroupNorm layers in
+the dual-path encoder introduce more memory transactions
+per operation than the baseline’s standard convolutions; and
+(ii) the Bi-Mamba component applies sequential state-space
+recurrence that does not parallelise across the sequence di-
+mension on current GPU hardware, regardless of operation
+count. The parameter reduction (73.8%) and FLOPs reduction
+(71.9%) therefore represent deployment-footprint advantages
+smaller model size and lower energy per inference rather than
+latency advantages. For deployment scenarios where memory
+efficiency and energy cost are the primary constraints, such
+as embedded medical devices or edge inference platforms,
+these reductions are the decisive advantage, while latency
+should improve as hardware support for state-space models
+matures [41].
+
+V. DISCUSSION
+
+UCA-MNet achieves competitive skin lesion segmentation
+performance across standard benchmarks with only 0.33 mil-
+lion trainable parameters and 4.3 GFLOPs. These results show
+that high-quality segmentation is possible under strict resource
+constraints, without relying on the large model capacities
+typical of Mamba-based or transformer architectures. The
+ablation experiments (Table V) confirm that this performance
+comes from the integration of interdependent components
+rather than from any single module in isolation, with the
+complete system achieving a 63% F1 improvement and a
+73.8% parameter reduction relative to the baseline. Among
+Mamba-based models, UCA-MNet achieves strong segmen-
+tation accuracy with far fewer parameters. VM-UNET and
+VM-UNET-V2 require 27.43 M and 23.16 M parameters,
+respectively, compared to just 0.33 M for UCA-MNet making
+UCA-MNet approximately 83× smaller than VM-UNET. VM-
+UNET scores slightly higher on ISIC-2017 (F1: 0.8500, mIoU:
+0.8194 vs. 0.8254, 0.8180), but UCA-MNet outperforms it on
+
+ISIC-2018 (F1: 0.8814, mIoU: 0.8515 vs. 0.8659, 0.8386).
+UCA-MNet also exceeds LightMUNet (1.15 M parameters,
+4.28 GFLOPs) on both ISIC-2017 and ISIC-2018, showing
+that competitive accuracy is achievable with 3.5× fewer pa-
+rameters.
+This level of compression has concrete implications for real-
+world clinical deployment. At float32 precision, UCA-MNet
+occupies just 1.3 MB of memory, compared to 5.5 MB for
+a model with 1.38 M parameters such as ShuffleNetV2. This
+distinction matters when deploying on entry-level mobile de-
+vices (smartphones with 2–4 GB RAM) or embedded systems
+(e.g., Raspberry Pi 4 with 4 GB RAM), which are common in
+primary care offices, rural clinics, and health centers in low-
+and middle-income countries (LMICs). Such environments
+typically allocate only 100–200 MB per application process
+shared across imaging libraries, user interface components,
+and patient data management so a 4.2 MB difference in
+model size is significant. These results show that competitive
+segmentation performance does not require large models or
+heavy computation. UCA-MNet balances accuracy, model
+size, and computational cost. Its low memory footprint, strong
+benchmark performance, and minimal inference requirements
+make it suitable for deployment in mobile health (mHealth)
+platforms, point-of-care diagnostic devices, and resource-
+constrained clinical systems where on-device inference is
+necessary due to data privacy regulations and limited network
+connectivity.
+
+VI. LIMITATIONS AND FUTURE WORK
+
+UCA-MNet shows that competitive skin lesion segmentation
+can be achieved with as few as 0.33M parameters an order of
+magnitude fewer than the lightest models in our comparison
+(1.15M to 27.43M). This extreme parameter efficiency is
+the central contribution of this work, but it also defines
+the scope of its current limitations. All experiments were
+conducted on intra-dataset splits: the official ISIC partitions
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 13 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+R. ALHARITH et al.: AN ULTRA-LIGHTWEIGHT CROSS-SCALE ATTENTION MAMBA NETWORK FOR ACCURATE SKIN LESION SEGMENTATION
+13
+
+for ISIC-2017 and ISIC-2018, and the conventional 70/10/20%
+train/validation/test split for PH2. All baseline models were
+trained and evaluated under identical conditions to ensure a
+fair comparison. However, like most work in this area (only
+approximately 20% of surveyed studies evaluate across-dataset
+splits), our results do not assess how well UCA-MNet general-
+izes to images from different scanners, acquisition protocols,
+or patient demographics. All comparisons reported here are
+based on single training runs; multi-run variance analysis is
+needed to establish statistical significance, and we plan to
+address this in future work. As shown in Fig. 6, UCA-MNet
+occasionally struggles with very low-contrast lesions and
+heavy hair occlusion. These failure modes are characteristic of
+ultra-lightweight architectures operating under strict parameter
+budgets. Strong benchmark performance establishes technical
+validity, but does not, by itself, demonstrate clinical utility.
+However, a model that cannot execute on resource-constrained
+hardware cannot be evaluated in the clinical environments
+where it is most needed. Feasibility at 0.33M parameters is a
+necessary precondition for clinical deployment not a substitute
+for rigorous clinical validation. Translation to clinical practice
+requires prospective studies conducted with appropriate ethical
+approval, clinician-in-the-loop evaluation, and populations that
+reflect real-world demographic diversity.
+Our future work will address these limitations in three ways.
+First, we will conduct cross-dataset generalization experiments
+to assess how UCA-MNet holds up across different imaging
+sources and acquisition conditions. Second, systematic failure
+analysis with multiple training runs will characterize model
+reliability and quantify prediction uncertainty. Third, and most
+important, we plan prospective clinical validation in collab-
+oration with dermatologists to determine whether automated
+segmentation improves diagnostic workflows in practice. This
+validation will focus on patient populations currently un-
+derrepresented in public benchmarks and explore extension
+to imaging modalities beyond dermoscopy to broaden the
+model’s clinical applicability.
+
+VII. CONCLUSION
+
+We introduced UCA-MNet, a lightweight deep learning
+architecture designed for efficient skin lesion segmentation
+on benchmark datasets. The model is built as a hierarchical
+encoder–decoder with a Mamba-based attention module that
+integrates detailed local texture information with broad global
+context. The main strengths of UCA-MNet come from three
+design elements: a multi-scale hierarchical encoder that ex-
+tracts features at several resolutions, a multi-scale fusion de-
+coder built to reconstruct high-resolution segmentation maps,
+and a Feature Compression and Fusion Module (FCFM) that
+aggregates features across all decoder scales. Central to the
+encoder is the Multi-Scale Module (MSM), which uses a bidi-
+rectional Mamba (Bi-Mamba) attention mechanism together
+with Cross-Scale Attention (CSA) and Pyramidal Squeeze
+Attention (PSA). This combination captures long-range spatial
+dependencies efficiently with linear computational complexity.
+Skip connections preserve spatial fidelity by passing informa-
+tion directly between the encoder and decoder blocks.
+
+Evaluations on ISIC-2017, ISIC-2018, and PH2 show that
+UCA-MNet reaches competitive performance compared with
+existing lightweight segmentation models and accuracy com-
+parable to much more complex architectures. Its compact
+design, with only 0.33 million parameters and 4.3 GFLOPs,
+allows efficient training and inference on resource-constrained
+devices. The hybrid loss function that combines binary cross-
+entropy (BCE), Dice, and intersection over union (IoU) losses
+also improves the model’s sensitivity to complex and irregular
+lesion boundaries. Future work will focus on cross-dataset
+generalization experiments, systematic failure case analysis,
+and prospective real-world clinical validation studies. With
+its integrated and computationally efficient architecture, UCA-
+MNet provides a foundation for the development of specialized
+lightweight networks in medical image segmentation.
+
+ACKNOWLEDGMENTS
+
+The authors extend their appreciation to the National Sci-
+ence Foundation of China under grants (No. 62471411 and
+62071396).
+
+[1] R. R. Akurathi, A. Ram Mohith, S. Shaman, K. Harshith, J. Simon,
+
+and N. Kapileswar, “A review of skin cancer detection: Methodolo-
+gies, evaluation metrics, research challenges, and future prospects,” in
+2025 International Conference on Electronics and Renewable Systems
+(ICEARS), 2025, pp. 1492–1497.
+[2] R. L. Siegel, A. N. Giaquinto, and A. Jemal, “Cancer statistics, 2024,”
+
+CA: a cancer journal for clinicians, vol. 74, no. 1, pp. 12–49, 2024.
+[3] F. Bray, M. Laversanne, H. Sung, J. Ferlay, R. L. Siegel, I. Soer-
+
+jomataram, and A. Jemal, “Global cancer statistics 2022: Globocan
+estimates of incidence and mortality worldwide for 36 cancers in 185
+countries,” CA: a cancer journal for clinicians, vol. 74, no. 3, pp. 229–
+263, 2024.
+[4] T. B. Jutzi, E. I. Krieghoff-Henning, T. Holland-Letz, J. S. Utikal,
+
+A. Hauschild, D. Schadendorf, W. Sondermann, S. Fr¨ohling, A. Hekler,
+M. Schmitt et al., “Artificial intelligence in skin cancer diagnostics: the
+patients’ perspective,” Frontiers in medicine, vol. 7, p. 233, 2020.
+[5] R. Arora, B. Raman, K. Nayyar, and R. Awasthi, “Automated skin lesion
+
+segmentation using attention-based deep convolutional neural network,”
+Biomedical Signal Processing and Control, vol. 65, p. 102358, 2021.
+[6] P. Tschandl, C. Rinner, Z. Apalla, G. Argenziano, N. Codella,
+
+A. Halpern, M. Janda, A. Lallas, C. Longo, J. Malvehy et al., “Human–
+computer collaboration for skin cancer recognition,” Nature medicine,
+vol. 26, no. 8, pp. 1229–1234, 2020.
+[7] K. Simonyan and A. Zisserman, “Very deep convolutional networks for
+
+large-scale image recognition,” arXiv preprint arXiv:1409.1556, 2014.
+[8] A. Howard, M. Sandler, G. Chu, L.-C. Chen, B. Chen, M. Tan, W. Wang,
+
+Y. Zhu, R. Pang, V. Vasudevan et al., “Searching for mobilenetv3,” in
+Proceedings of the IEEE/CVF International Conference on Computer
+Vision, 2019, pp. 1314–1324.
+[9] S.-M. Yang, S. Lv, W. Zhang, and Y. Cui, “Microfluidic point-of-
+
+care (poc) devices in early diagnosis: A review of opportunities and
+challenges,” Sensors, vol. 22, no. 4, p. 1620, 2022.
+[10] O. Rivera-Romero, E. Gabarron, J. Ropero, and K. Denecke, “Designing
+
+personalised mhealth solutions: an overview,” Journal of Biomedical
+Informatics, vol. 146, p. 104500, 2023.
+[11] T. M. Khan, S. S. Naqvi, and E. Meijering, “Esdmr-net: A lightweight
+
+network with expand-squeeze and dual multiscale residual connections
+for medical image segmentation,” Engineering Applications of Artificial
+Intelligence, vol. 133, p. 107995, 2024.
+[12] T. Akram, M. A. Khan, M. Sharif, and M. Yasmin, “Skin lesion
+
+segmentation and recognition using multichannel saliency estimation
+and m-svm on selected serially fused features,” Journal of Ambient
+Intelligence and Humanized Computing, pp. 1–20, 2024.
+[13] C. Ruiz, P. M. Bhatt, S. K. Gupta, and Q. Huang, “Human-process
+
+inspired automated layer segmentation for quality assessment in wire-
+arc additive manufacturing,” IEEE Transactions on Automation Science
+and Engineering, 2025.
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+================================================================================
+===== PAGE 14 =====
+================================================================================
+
+This article has been accepted for publication in IEEE Journal of Biomedical and Health Informatics. This is the author's version which has not been fully edited and
+
+content may change prior to final publication. Citation information: DOI 10.1109/JBHI.2026.3708901
+
+14
+IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS
+
+[14] A. Adegun and S. Viriri, “Deep learning techniques for skin lesion
+
+analysis and melanoma cancer detection: a survey of state-of-the-art,”
+Artificial Intelligence Review, vol. 54, no. 2, pp. 811–841, 2021.
+[15] P. M. Pereira, R. Fonseca-Pinto, R. P. Paiva, P. A. Assuncao, L. M.
+
+Tavora, L. A. Thomaz, and S. M. Faria, “Dermoscopic skin lesion image
+segmentation based on local binary pattern clustering: Comparative
+study,” Biomedical Signal Processing and Control, vol. 59, p. 101924,
+2020.
+[16] J. Long, E. Shelhamer, and T. Darrell, “Fully convolutional networks
+
+for semantic segmentation,” in Proceedings of the IEEE conference on
+computer vision and pattern recognition, 2015, pp. 3431–3440.
+[17] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks
+
+for biomedical image segmentation,” in Medical Image Computing and
+Computer-Assisted Intervention – MICCAI 2015, N. Navab, J. Horneg-
+ger, W. M. Wells, and A. F. Frangi, Eds.
+Cham: Springer International
+Publishing, 2015, pp. 234–241.
+[18] Z. Zhou, M. M. Rahman Siddiquee, N. Tajbakhsh, and J. Liang,
+
+“Unet++: A nested u-net architecture for medical image segmentation,”
+in Deep learning in medical image analysis and multimodal learning
+for clinical decision support: 4th international workshop, DLMIA 2018,
+and 8th international workshop, ML-CDS 2018, held in conjunction
+with MICCAI 2018, Granada, Spain, September 20, 2018, proceedings
+4.
+Springer, 2018, pp. 3–11.
+[19] S. Qamar, P. Ahmad, and L. Shen, “Dense encoder-decoder–based archi-
+
+tecture for skin lesion segmentation,” Cognitive Computation, vol. 13,
+no. 2, pp. 583–594, 2021.
+[20] H. Wu, S. Chen, G. Chen, W. Wang, B. Lei, and Z. Wen, “Fat-net:
+
+Feature adaptive transformers for automated skin lesion segmentation,”
+Medical image analysis, vol. 76, p. 102327, 2022.
+[21] R. Xu, C. Wang, J. Zhang, S. Xu, W. Meng, and X. Zhang, “Skinformer:
+
+Learning statistical texture representation with transformer for skin le-
+sion segmentation,” IEEE Journal of Biomedical and Health Informatics,
+2024.
+[22] J. Ruan, S. Xiang, M. Xie, T. Liu, and Y. Fu, “Malunet: A multi-attention
+
+and light-weight unet for skin lesion segmentation,” in 2022 IEEE
+International Conference on Bioinformatics and Biomedicine (BIBM).
+IEEE, 2022, pp. 1150–1156.
+[23] Y. Ma, L. Wu, Y. Gao, F. Gao, J. Zhang, and Z. Luo, “Ulfac-net:
+
+Ultra-lightweight fully asymmetric convolutional network for skin lesion
+segmentation,” IEEE Journal of Biomedical and Health Informatics,
+vol. 27, no. 6, pp. 2886–2897, 2023.
+[24] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai,
+
+T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly et al.,
+“An image is worth 16x16 words: Transformers for image recognition
+at scale,” 2020.
+[25] A. Gu and T. Dao, “Mamba: Linear-time sequence modeling with
+
+selective state spaces,” 2024.
+[26] J. Hu, L. Shen, and G. Sun, “Squeeze-and-excitation networks,” in
+
+Proceedings of the IEEE Conference on Computer Vision and Pattern
+Recognition (CVPR), June 2018.
+[27] N. C. Codella, D. Gutman, M. E. Celebi, B. Helba, M. A. Marchetti,
+
+S. W. Dusza, A. Kalloo, K. Liopyris, N. Mishra, H. Kittler et al.,
+“Skin lesion analysis toward melanoma detection: A challenge at the
+2017 international symposium on biomedical imaging (isbi), hosted by
+the international skin imaging collaboration (isic),” in 2018 IEEE 15th
+international symposium on biomedical imaging (ISBI 2018).
+IEEE,
+2018, pp. 168–172.
+[28] N. Codella, V. Rotemberg, P. Tschandl, M. E. Celebi, S. Dusza,
+
+D. Gutman, B. Helba, A. Kalloo, K. Liopyris, M. Marchetti et al., “Skin
+lesion analysis toward melanoma detection 2018: A challenge hosted
+by the international skin imaging collaboration (isic),” arXiv preprint
+arXiv:1902.03368, 2019.
+[29] T. Mendonc¸a, P. M. Ferreira, J. S. Marques, A. R. S. Marcal, and
+
+J. Rozeira, “Ph2 - a dermoscopic image database for research and
+benchmarking,” in 2013 35th Annual International Conference of the
+IEEE Engineering in Medicine and Biology Society (EMBC), 2013, pp.
+5437–5440.
+[30] Z. Mirikharaji, K. Abhishek, A. Bissoto, C. Barata, S. Avila, E. Valle,
+
+M. E. Celebi, and G. Hamarneh, “A survey on deep learning for skin
+lesion segmentation,” Medical Image Analysis, vol. 88, p. 102868, 2023.
+[31] A. He, K. Wang, T. Li, C. Du, S. Xia, and H. Fu, “H2former: An efficient
+
+hierarchical hybrid transformer for medical image segmentation,” IEEE
+Transactions on Medical Imaging, vol. 42, no. 9, pp. 2763–2775, 2023.
+[32] J. Ruan, J. Li, and S. Xiang, “Vm-unet: Vision mamba unet for medical
+
+image segmentation,” arXiv preprint arXiv:2402.02491, 2024.
+[33] M. Zhang, Y. Yu, S. Jin, L. Gu, T. Ling, and X. Tao, “Vm-unet-
+
+v2: rethinking vision mamba unet for medical image segmentation,” in
+
+International symposium on bioinformatics research and applications.
+Springer, 2024, pp. 335–346.
+[34] S. Xie and Z. Tu, “Holistically-nested edge detection,” in Proceedings of
+
+the IEEE international conference on computer vision, 2015, pp. 1395–
+1403.
+[35] M. M. Rahman, M. Munir, and R. Marculescu, “Emcad: Efficient multi-
+
+scale convolutional attention decoding for medical image segmentation,”
+in Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, 2024, pp. 11 769–11 779.
+[36] F. Tang, J. Ding, Q. Quan, L. Wang, C. Ning, and S. K. Zhou, “Cmunext:
+
+An efficient medical image segmentation network based on large kernel
+and skip fusion,” in 2024 IEEE International Symposium on Biomedical
+Imaging (ISBI).
+IEEE, 2024, pp. 1–5.
+[37] Y. Liu, H. Zhu, M. Liu, H. Yu, Z. Chen, and J. Gao, “Rolling-unet: Revi-
+
+talizing mlp’s ability to efficiently extract long-distance dependencies for
+medical image segmentation,” in Proceedings of the AAAI Conference
+on Artificial Intelligence, vol. 38, no. 4, 2024, pp. 3819–3827.
+[38] J. M. J. Valanarasu and V. M. Patel, “Unext: Mlp-based rapid medical
+
+image segmentation network,” in International conference on medical
+image computing and computer-assisted intervention.
+Springer, 2022,
+pp. 23–33.
+[39] N. Ma, X. Zhang, H.-T. Zheng, and J. Sun, “Shufflenet v2: Practical
+
+guidelines for efficient cnn architecture design,” in Proceedings of the
+European conference on computer vision (ECCV), 2018, pp. 116–131.
+[40] W. Liao, Y. Zhu, X. Wang, C. Pan, Y. Wang, and L. Ma, “Lightm-unet:
+
+Mamba assists in lightweight unet for medical image segmentation,”
+arXiv preprint arXiv:2403.05246, 2024.
+[41] A. Gu and T. Dao, “Mamba: Linear-time sequence modeling with
+
+selective state spaces,” arXiv preprint arXiv:2312.00752, 2023.
+
+Authorized licensed use limited to: Nanjing University. Downloaded on September 23,2026 at 07:47:43 UTC from IEEE Xplore.  Restrictions apply.
+
+© 2026 IEEE. All rights reserved, including rights for text and data mining and training of artificial intelligence and similar technologies. Personal use is permitted,
+
+but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.

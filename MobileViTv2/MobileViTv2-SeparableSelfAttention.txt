@@ -1,0 +1,2730 @@
+# Source PDF: E:\paper\05-paper-mamba\MobileViTv2\Separable Self-attention for Mobile Vision.pdf
+# Pages: 18
+
+
+================================================================================
+===== PAGE 1 =====
+================================================================================
+
+Separable Self-attention for Mobile Vision
+
+Transformers
+
+Sachin Mehta
+
+Apple
+
+arXiv:2206.02680v1  [cs.CV]  6 Jun 2022
+
+Mohammad Rastegari
+
+Apple
+
+Abstract
+
+Mobile vision transformers (MobileViT) can achieve state-of-the-art performance
+across several mobile vision tasks, including classiﬁcation and detection. Though
+these models have fewer parameters, they have high latency as compared to con-
+volutional neural network-based models. The main efﬁciency bottleneck in Mo-
+bileViT is the multi-headed self-attention (MHA) in transformers, which requires
+O(k2) time complexity with respect to the number of tokens (or patches) k. More-
+over, MHA requires costly operations (e.g., batch-wise matrix multiplication)
+for computing self-attention, impacting latency on resource-constrained devices.
+This paper introduces a separable self-attention method with linear complexity,
+i.e. O(k). A simple yet effective characteristic of the proposed method is that
+it uses element-wise operations for computing self-attention, making it a good
+choice for resource-constrained devices. The improved model, MobileViTv2, is
+state-of-the-art on several mobile vision tasks, including ImageNet object classi-
+ﬁcation and MS-COCO object detection. With about three million parameters,
+MobileViTv2 achieves a top-1 accuracy of 75.6% on the ImageNet dataset, out-
+performing MobileViT by about 1% while running 3.2× faster on a mobile device.
+Our source code is available at: https://github.com/apple/ml-cvnets
+
+1
+Introduction
+
+Vision transformers (ViTs) [1] have become ubiquitous for a wide variety of visual recognition tasks
+[2, 3], including mobile vision tasks [4]. At the heart of the ViT-based models, including mobile
+vision transformers, is the transformer block [5]. The main efﬁciency bottleneck in ViT-based models,
+especially for inference on resource-constrained devices, is the multi-headed self-attention (MHA).
+MHA allows the tokens (or patches) to interact with each other, and is a key for learning global
+representations. However, the complexity of self-attention in transformer block is O(k2), i.e., it is
+quadratic with respect to the number of tokens (or patches) k. Besides this, computationally expensive
+operations (e.g., batch-wise matrix multiplication; see Fig. 1) are required to compute attention matrix
+in MHA. This, in particular, is concerning for deploying ViT-based models on resource-constrained
+devices, as these devices have reduced computational capabilities, restrictive memory constraints,
+and a limited power budget. Therefore, this paper seeks to answer this question: can self-attention in
+transformer block be optimized for resource-constrained devices?
+
+Several methods [e.g., 7–10] have been proposed for optimizing the self-attention operation in
+transformers (not necessarily for ViTs). Among these, a widely studied approach in sequence
+modeling tasks is to introduce sparsity in self-attention layers, wherein each token attends to a
+subset of tokens in an input sequence [7, 9]. Though these approaches reduces the time complexity
+from O(k2) to O(k
+
+k) or O(k log k), the cost is a performance drop. Another popular approach
+for approximating self-attention is via low-rank approximation. Linformer [10] decomposes the
+self-attention operation into multiple smaller self-attention operations via linear projections, and
+reduces the complexity of self-attention from O(k2) to O(k). However, Linformer still uses costly
+
+Preprint. Under review.
+
+================================================================================
+===== PAGE 2 =====
+================================================================================
+
+Top-5 operations
+Time
+Memory
+
+cw2NLH8AW+Br2CG2/AfA2KSWqFOe6WRjs659y5dyYtpHAYRb+D8MrVa9dvbNzs3Lp95+697v0Hh86UlsOQG2nscocSKFhiAIlHBcWmEolHKWz3YV+9BGsE0Yf4LyAsWJTLXLBGXpq0v2TpDAVukKWlpLZupK87tAmEjSFLSWM4v7zAscr3gtwimlevTMZyJo+XRG7RhUSTgXOa5+V/HdSImucBi2rA8u0y41VYL0N3dzbmn0YPNs8X/tW6FXCQm+re6V1lwpJahCNWr9/AjpbTvp9qJ+tAx6EcQN6JEm9ifdv0lmeKlAI5fMuVEceOKWRcQt1JSgcF4zM2hZGHmilw42r5TDV94pmM+ln80UiX7PmKin5ir1mYrhiVvXFuRl2qjE/NW4EroETQ/a5SXkqKhizenmbDAUc49YNwKf1fKT5hlHP3PaHVJjZn5bjWJUqJQprPtUdv7B4fT0XweGgH7/ob7/f7u28bla3QR6Rx2SLxOQl2SFvyD4ZEh7w4HPwJfgafgu/hz/Cn2epYdDUPCStCH/9A6XA6Yo=</latexit>
+
+aten::mm
+8.0 ms
+2.0 Mb
+aten::bmm
+1.9 ms
+2.5 Mb
+aten:: softmax
+354.0 us
+2.0 Mb
+aten::copy
+305.0 us
+0.0 Mb
+aten::add
+258.0 us
+2.0 MB
+
+Transformer (Total time = 12.3 ms)
+
+Top-5 operations
+Time
+Memory
+
+aten::mm
+7.8 ms
+2.0 Mb
+aten::bmm
+3.6 ms
+3.5 Mb
+aten:: softmax
+300.0 us
+2.0 Mb
+aten::mul
+296.0 us
+2.0 Mb
+aten::einsum
+163.0 us
+0.0 Mb
+
+Linformer (Total time = 13.8 ms)
+
+Top-5 operations
+Time
+Memory
+
+aten::mm
+6.3 ms
+1.5 Mb
+aten::add
+252.0 us
+1.5 Mb
+fused relu mul
+113.0 us
+512.0 Kb
+aten::sum
+91.0 us
+2.0 Kb
+aten::mul
+86.0 us
+512.0 Kb
+
+Ours (Total time = 7.7 ms)
+Top-5 operations in each layer
+
+Model
+Complexity
+
+Transformer
+O(k2)
+Linformer
+O(k)
+Ours
+O(k)
+
+Theoretical time complexity
+
+CPU latency vs. Tokens
+
+Figure 1: Comparison between different attention units. Transformer and Linformer use costly
+operations (batch-wise matrix multiplication) for computing self-attention. Such operations are a
+bottleneck for efﬁcient inference on resource-constrained devices. The proposed method does not use
+such operations, thus accelerating inference on resource-constrained devices. Left compares top-5
+operations (sorted by CPU time) in a single layer of different attention units for k = 256 tokens.
+Top Right compares complexity of different attention units. Bottom Right compares the latency
+of different attention units as a function of the number of tokens k. These results are computed
+on a single CPU core machine with a 2.4 GHz 8-Core Intel Core i9 processor, d = 512 (token
+dimensionality), h = 8 (number of heads; for Transformer and Linformer), and p = 256 (projected
+tokens in Linformer) using a publicly available proﬁler in PyTorch [6].
+
+82
+
+30
+
+80
+
+Mean Average Precision
+
+6.4%
+better
+
+28
+
+78
+
+Top-1 accuracy
+
+26
+
+76
+
+3.2 × faster
+
+(in %)
+
+(in %)
+
+3 × faster
+
+74
+
+24
+
+72
+
+22
+
+MobileViTv1
+MobileViTv2
+
+70
+
+20
+
+68
+
+81
+
+Mean Intersection over Union
+
+80
+
+5.4%
+better
+
+79
+
+78
+
+6.7% 
+better
+
+(in %)
+
+77
+
+76
+
+75
+
+3.1 × faster
+
+MobileViTv1
+MobileViTv2
+
+MobileViTv1
+MobileViTv2
+
+74
+
+73
+
+2
+4
+6
+8
+10
+12
+14
+16
+18
+Inference time (in ms)
+
+(b) MS-COCO object detection
+
+Figure 2: MobileViTv2 models are faster and better than MobileViTv1 models [4] across dif-
+ferent tasks. MobileViTv2 models are constructed by replacing multi-headed self-attention in
+MobileViTv1 with the proposed separable self-attention (Section 3.2). Here, inference time is
+measured on an iPhone12 for an input resolution of 256 × 256, 512 × 512, and 320 × 320 for
+classiﬁcation, segmentation, and detection respectively.
+
+operations (e.g., batch-wise matrix multiplication; Fig. 1) for learning global representations in MHA,
+which may hinder the deployment of these models on resource-constrained devices.
+
+This paper introduces a novel method, separable self-attention, with O(k) complexity for addressing
+the bottlenecks in MHA in transformers. For efﬁcient inference, the proposed self-attention method
+also replaces the computationally expensive operations (e.g., batch-wise matrix multiplication) in
+MHA with element-wise operations (e.g., summation and multiplication). Experimental results on
+standard vision datasets and tasks demonstrates the effectiveness of the proposed method (Fig. 2).
+
+2
+
+================================================================================
+===== PAGE 3 =====
+================================================================================
+
+2
+Related work
+
+Improving self-attention
+Improving the efﬁciency of MHA in transformers is an active area of
+research. The ﬁrst line of research introduces locality to address the computational bottleneck in
+MHA [e.g., 7, 9, 11, 12]. Instead of attending to all k tokens, these methods use predeﬁned patterns
+to limit the receptive ﬁeld of self-attention from all k tokens to a subset of tokens, reducing the
+time complexity from O(k2) to O(k
+
+k) or O(k log k). However, such methods suffer from large
+performance degradation with moderate training/inference speed-up over the standard MHA in
+transformers. To improve the efﬁciency of MHA, the second line of research uses similarity measures
+to group tokens [8, 13, 14]. For instance, Reformer [8] uses locality-sensitive hashing to group
+the tokens and reduces the theoretical self-attention cost from O(k2) to O(k log k). However, the
+efﬁciency gains over standard MHA are noticeable only for large sequences (k > 2048) [8]. Because
+k < 1024 in ViTs, these approaches are not suitable for ViTs. The third line of research improves
+the efﬁciency of MHA via low-rank approximation [10, 15]. The main idea is to approximate
+the self-attention matrix with a low-rank matrix, reducing the computational cost from O(k2) to
+O(k). Even though these methods speed-up the self-attention operation signiﬁcantly, they still use
+expensive operations for computing attention, which may hinder the deployment of these models on
+resource-constrained devices (Fig. 1).
+
+In summary, existing methods for improving MHA are limited in their reduction of inference time
+and memory consumption, especially for resource-constrained devices. This work introduces a
+separable self-attention method that is fast and memory-efﬁcient (see Fig. 1), which is desirable for
+resource-constrained devices.
+
+Improving transformer-based models
+There has been signiﬁcant work on improving the efﬁ-
+ciency of transformers [3, 4, 16–18]. The majority of these approaches reduce the number of tokens
+in the transformer block using different methods, including down-sampling [19, 18] and pyramidal
+structure [3, 20, 4]. Because the proposed separable self-attention module is a drop-in replacement to
+MHA, it can be easily integrated with any transformer-based model to further improve its efﬁciency.
+
+Other methods
+Transformer-based models performance can be improved using different methods,
+including mixed-precision training [21], efﬁcient optimizers [22, 23], and knowledge distillation [2].
+These methods are orthogonal to our work, and by default, we use mixed-precision during training.
+
+3
+MobileViTv2
+
+MobileViT [4] is a hybrid network that combines the strengths of CNNs and ViTs. MobileViT
+views transformers as convolutions, which allows it to leverage the merits of both convolutions (e.g.,
+inductive biases) and transformers (e.g., long-range dependencies) to build a light-weight network for
+mobile devices. Though MobileViT networks have signiﬁcantly fewer parameters and deliver better
+performance as compared to light-weight CNNs (e.g., MobileNets [24, 25]), they have high latency.
+The main efﬁciency bottleneck in MobileViT is the multi-headed self-attention (MHA; Fig. 3a).
+
+MHA uses scaled dot-product attention to capture the contextual relationships between k tokens
+(or patches). However, MHA is expensive as it has O(k2) time complexity. This quadratic cost
+is a bottleneck for transformers with a large number of tokens k (Fig. 1). Moreover, MHA uses
+computationally- and memory-intensive operations (e.g., batch-wise matrix multiplication and soft-
+max for computing attention matrix; Fig. 1); which could be a bottleneck on resource-constrained
+devices. To address the limitations of MHA for efﬁcient inference on resource-constrained devices,
+this paper introduces separable self-attention with linear complexity (Fig. 3c).
+
+The main idea of our separable self-attention approach, shown in Fig. 4b, is to compute context scores
+with respect to a latent token L. These scores are then used to re-weight the input tokens and produce
+a context vector, which encodes the global information. Because the self-attention is computed with
+respect to a latent token, the proposed method can reduce the complexity of self-attention in the
+transformer by a factor k. A simple yet effective characteristic of the proposed method is that it
+uses element-wise operations (e.g., summation and multiplication) for its implementation, making it
+a good choice for resource-constrained devices. We call the proposed attention method separable
+self-attention because it allows us to encode global information by replacing the quadratic MHA
+
+3
+
+================================================================================
+===== PAGE 4 =====
+================================================================================
+
+AphyT948aCIV/Hm3/jJNmDJhY0FXdHdFCWfG+v63V1hb39jcKm6Xdnb39g/Kh0cto1JNaJMornQnwoZyJmnTMstpJ9EUi4jTdjS+nfntJ6oNU/LBThIaCjyULGYEWye1eoYNBe6XK37VnwOtkiAnFcjR6Je/egNFUkGlJRwb0w38xIYZ1pYRTqelXmpogskYD2nXUYkFNWE2v3aKzpwyQLHSrqRFc/X3RIaFMRMRuU6B7cgsezPxP6+b2vg6zJhMUkslWSyKU46sQrPX0YBpSiyfOIKJZu5WREZY2JdQCUXQrD8ipXVSDWjW4v6zUb/I4inACp3AOAVxBHe6gAU0g8AjP8ApvnvJevHfvY9Fa8PKZY/gD7/MHnlePKQ=</latexit>σ
+Softmax
+Dot-product
+Concatenation
+
+k
+d
+
+x
+
+k
+d
+
+7J9T7tfl8I4J/4iGZ8J/U=">AB8XicbVDLSgMxFL1TX7W+qi7dBIvgqsyIqMuiG5cV7APbUjLpnTY0kxmSjFiG/oUbF4q49W/c+Tdm2lo64HA4Zx7ybnHjwXxnW/ncLK6tr6RnGztLW9s7tX3j9o6ihRDBsEpFq+1Sj4BIbhuB7VghDX2BLX98k/mtR1SaR/LeTGLshXQoecAZNVZ6IbUjPwgfZr2yxW36s5AlomXkwrkqPfLX91BxJIQpWGCat3x3Nj0UqoMZwKnpW6iMaZsTIfYsVTSEHUvnSWekhOrDEgQKfukITP190ZKQ60noW8ns4R60cvE/7xOYoKrXsplnBiUbP5RkAhiIpKdTwZcITNiYglitushI2oszYkq2BG/x5GXSPKt6F9Xzu/NK7TqvowhHcAyn4MEl1OAW6tABhKe4RXeHO28O/Ox3y04OQ7h/AHzucPADaRJQ=</latexit>x
+
+k
+d
+
+x
+
+Linear
+Linear
+Linear
+Linear
+Linear
+Linear
+h
+Linear
+Linear
+Linear
+
+jMiuQbZM+HeSITVF930=">ACBXicbVC7SgNBFJ2NrxhfUstFoNgFXYlqGXQxjIB84BsCLOTu8mQ2Qczd8WwbGPjr9hYKGLrP9j5N85uUmjigYHDOfc1x40EV2hZ30ZhZXVtfaO4Wdra3tndK+8ftFUYSwYtFopQdl2qQPAWshRQDeSQH1XQMed3GR+5x6k4mFwh9MI+j4dBdzjKWBuVjB+EB8zmJhGaOD7FMaMiabpoFyxqlYOc5nYc1IhczQG5S9nGLYhwCZoEr1bCvCfkIlciYgLTmxgoiyCR1BT9OA+qD6Sb49NU+1MjS9UOoXoJmrvzsS6is19V1dmd2oFr1M/M/rxehd9RMeRDFCwGaLvFiYGJpZJOaQS2AopQJrm+1WRjKilDHVxJh2AvfnmZtM+r9kW1qxV6tfzOIrkiJyQM2KTS1Int6RBWoSR/JMXsmb8WS8GO/Gx6y0YMx7DskfGJ8/RAaZtg=</latexit>Q
+K
+V
+
+Sd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+Sd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+i8eK1hbaUDabTbt0swm7E6GE/gQvHhTx6i/y5r9x2+agrQ8GHu/NMDMvSKUw6LrfTmldW19o7xZ2dre2d2r7h8miTjLdYIhPdCajhUijeQoGSd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+i8eK1hbaUDabTbt0swm7E6GE/gQvHhTx6i/y5r9x2+agrQ8GHu/NMDMvSKUw6LrfTmldW19o7xZ2dre2d2r7h8miTjLdYIhPdCajhUijeQoGSd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+dh
+
+Token 
+Protection
+
+h
+
+Token 
+Protection
+
+Token 
+Projection
+
+>{
+
+xnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs
+
+=</latexit
+
+Transpose
+
+k{
+
+{
+
+h
+
+dh
+
+dh
+
+i8eK1hbaUDabTbt0swm7E6GE/gQvHhTx6i/y5r9x2+agrQ8GHu/NMDMvSKUw6LrfTmldW19o7xZ2dre2d2r7h8miTjLdYIhPdCajhUijeQoGSd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+{
+
+FIcuJx23PHjYt6ZUKmYCJ9hFlEnwMOQ+Yxg0FQzGpQqVtVKy1wHdgYqKvGoGxc9j1B4oCGQDhWqmdbETgJlsAIp/NiP1Y0wmSMh7SnYgDqpwkVTo3LzTjmb6QukMwU/bvRYIDpWaBqzcDCO1OluQ/816Mfj3TsLCKAYakuUjP+YmCHNh2/SYpAT4TANMJNaTLCEhPQ4eS+uEKMAbsq5yTRTMyxnF6nksHleaPehEUqszpdetXJ2qs5roP2TdW+rdatUr9Icu4gM7QObpCNrpDdfSEGqiFCKLoBb2iN+Pd+DS+jO/l6oaR3ZyiXBk/v0SrsCU=</latexit>p
+
+Transpose
+
+GwSU2DTcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs=</latexit>{
+
+k
+
+dh
+
+h
+
+Sd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+>{
+
+qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs=</latexit
+
+σ
+k{
+
+h
+
+{
+
+h
+
+7FoLTj5zDH8gfP5A518jWs=</latexit>{
+
+N0IJ/QdePCji1X/kzX/jts1BWx8MPN6bYWZekAiujet+O4W19Y3NreJ2aWd3b/+gfHjU0nGqGDZLGLVCahGwSU2DTcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L8678
+
+>{
+
+hN2N0IJ/QdePCji1X/kzX/jts1BWx8MPN6bYWZekAiujet+O4W19Y3NreJ2aWd3b/+gfHjU0nGqGDZLGLVCahGwSU2D
+
+TcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6
+
+qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs=</latexit
+
+σ
+k{
+
+{
+
+k
+
+k
+
+/qh69LBbBU0lEqseiF49V7Ae0oWy2k3bpZhN2N0IJ/QdePCji1X/kzX/jts1BWx8MPN6bYWZekAiujet+O4W19Y3NreJ2aWd3b/+gfHjU0nGqGDZLGLVCahGwSU2DTcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs=</latexit>
+
+Attention
+
+FIcuJx23PHjYt6ZUKmYCJ9hFlEnwMOQ+Yxg0FQzGpQqVtVKy1wHdgYqKvGoGxc9j1B4oCGQDhWqmdbETgJlsAIp/NiP1Y0wmSMh7SnYgDqpwkVTo3LzTjmb6QukMwU/bvRYIDpWaBqzcDCO1OluQ/816Mfj3TsLCKAYakuUjP+YmCHNh2/SYpAT4TANMJNaTLCEhPQ4eS+uEKMAbsq5yTRTMyxnF6nksHleaPehEUqszpdetXJ2qs5roP2TdW+rdatUr9Icu4gM7QObpCNrpDdfSEGqiFCKLoBb2iN+Pd+DS+jO/l6oaR3ZyiXBk/v0SrsCU=</latexit>p
+
+matrix
+
+dh
+
+Attention
+
+matrix
+
+d
+
+Linear
+
+d
+
+y
+
+k
+d
+
+Sd1LNaRxI3g5GN1O/cS1EYl6wHK/ZgOlIgEo2il+7A/7Fdrbt2dgSwTryA1KNDsV796YcKymCtkhrT9dwU/ZxqFEzySaWXGZ5SNqID3rVU0ZgbP5+dOiEnVglJlGhbCslM/T2R09iYcRzYzpji0Cx6U/E/r5thdOXnQqUZcsXmi6JMEkzI9G8SCs0ZyrElGlhbyVsSDVlaNOp2BC8xZeXyeNZ3buoe3fntcZ1EUcZjuAYTsGDS2jALTShBQwG8Ayv8OZI58V5dz7mrSWnmDmEP3A+fwBCjI3J</latexit>dh
+
+y6cVnBPqAtZTK5aYdOJmHmRiwhGzf+ihsXirj1H9z5N07bLT1wMDhnPua48WCa3Scb2tpeWV1b2wUdzc2t7ZLe3tN3WUKAYNFolItT2qQXAJDeQoB0roKEnoOWNrid+6x6U5pG8w3EMvZAOJA84o2ikfumoi/CA0zmpAj9LuyHFIaMibWZv1R2Ks4U9iJxc1ImOer90lfXj1gSgkQmqNYd14mxl1KFnAnIit1EQ0zZiA6gY6ikIeheOt2e2SdG8e0gUuZJtKfq746UhlqPQ89UTm7U895E/M/rJBhc9lIu4wRBstmiIBE2RvYkEtvnChiKsSGUKW5utdmQKsrQBFc0IbjzX14kzbOKe16p3lbLtas8jgI5JMfklLjkgtTIDamTBmHkTyTV/JmPVkv1rv1MStdsvKeA/IH1ucPS6SZuw=</latexit>V
+I
+
+K
+
+Linear
+Linear
+
+Linear
+
+Token 
+Protection
+
+Token 
+Protection
+
+Token 
+Projection
+
+d
+
+d
+
+1
+
+ReLU
+
+σ
+
+{
+
+p
+
+k
+d
+
+k
+d
+
+dh
+
+k
+
+Context
+
+d
+
+{
+
+X
+
+h
+
+Scores
+
+j5zDH8gfP5A518jWs=</latexit>{
+
+<latexit sha1_base64="gRkLF/8GQhmCxuxt1NbQbx39AfI=">AB6XicbVBNS8NAEJ3U
+
+r1q/qh69LBbBU0lEqseiF49V7Ae0oWy2k3
+
+bpZhN2N0IJ/QdePCji1X/kzX/jts1BWx8MPN6bYWZekAiujet+O4W19Y3NreJ2aWd3b/+gfHjU0nGqGDZLGLVCahGwSU2DTcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLT
+
+69LBbBU0lEqseiF49V7Ae0oWy2k3bpZhN2N0IJ/QdePCji1X/kzX/jts1BWx8MPN6bYWZekAiujet+O4W19Y3NreJ2aWd3b/+gfHjU0nGqGDZLGLVCahGwSU2DTcCO4lCGgUC28H4dua3n1BpHstHM0nQj+hQ8pAzaqz0Mv65Ypbdecgq8TLSQVyNPrlr94gZmE0jBte56bmL8jCrDmcBpqZdqTCgb0yF2LZU0Qu1n80un5MwqAxLGypY0ZK7+nshopPUkCmxnRM1IL3sz8T+vm5rw2s+4TFKDki0WhakgJiazt8mAK2RGTCyhTHF7K2EjqigzNpySDcFbfnmVtC6qXq3q3V9W6jd5HEU4gVM4Bw+uoA530IAmMAjhGV7hzRk7L86787FoLTj5zDH8gfP5A518jWs=</latexit>{
+
+k
+
+Context
+
+d
+
+vector
+
+dh
+
+Linear
+
+Z/kzX/jts1BWx8MPN6bYWZekAqujet+O4W19Y3NreJ2aWd3b/+gfHjU0kmGDZIhLVCahGwSU2DTcCO6lCGgcC28Hobua3n1BpnsgHM07Rj+lA8ogzaqzUCPvlilt15yCrxMtJBXLU+WvXpiwLEZpmKBadz03Nf6EKsOZwGmpl2lMKRvRAXYtlTRG7U/mh07JmVCEiXKljRkrv6emNBY63Ec2M6YmqFe9mbif143M9GNP+EyzQxKtlgUZYKYhMy+JiFXyIwYW0KZ4vZWwoZUWZsNiUbgrf8ipXVS9q6rXuKzUbvM4inACp3AOHlxDe6hDk1gPAMr/DmPDovzrvzsWgtOPnMfyB8/kDyeGM7g=</latexit>d
+
+d
+
+Linear
+
+y
+
+d
+
+k
+d
+
+Ny4r2Ae2Q8mkmTY0kwxJRhiG/oUbF4q49W/c+Tdm2lo64HA4Zx7ybkniDnTxnW/ndLa+sbmVnm7srO7t39QPTzqaJkoQtEcql6AdaUM0HbhlOe7GiOAo47QbT29zvPlGlmRQPJo2pH+GxYCEj2FjpcRBhMwnCLJ0NqzW37s6BVolXkBoUaA2rX4ORJElEhSEca93Nj4GVaGEU5nlUGiaYzJFI9p31KBI6r9bJ54hs6sMkKhVPYJg+bq740MR1qnUWAn84R62cvF/7x+YsJrP2MiTgwVZPFRmHBkJMrPRyOmKDE8tQTxWxWRCZYWJsSRVbgrd8irpXNS9y3rjvlFr3hR1lOETuEcPLiCJtxBC9pAQMAzvMKbo50X5935WIyWnGLnGP7A+fwBAbuRJg=</latexit>y
+
+k
+d
+
+(b) MHA in Linformer [10]
+
+Figure 3: Different self-attention units. (a) is a standard multi-headed self-attention (MHA) in
+transformers. (b) extends MHA in (a) by introducing token projection layers, which project k tokens
+to a pre-deﬁned number of tokens p, thus reducing the complexity from O(k2) to O(k). However,
+it still uses costly operations (e.g., batch-wise matrix multiplication) for computing self-attention,
+impacting latency on resource-constrained devices (Fig. 1). (c) is the proposed separable self-attention
+layer that is linear in complexity, i.e., O(k), and uses element-wise operations for faster inference.
+
+with two separate linear computations. The improved model, MobileViTv2, is obtained by replacing
+MHA with separable self-attention in MobileViT.
+
+In the rest of this section, we ﬁrst brieﬂy describe MHA (Section 3.1), and then elaborate on the
+details of separable self-attention (Section 3.2) and MobileViTv2 architecture (Section 3.3).
+
+3.1
+Overview of multi-headed self-attention
+
+MHA (Fig. 3a) allows transformer to encode inter-token relationships. Speciﬁcally, MHA takes an
+input x ∈Rk×d comprising of k d-dimensional token (or patch) embeddings. The input x is then fed
+to three branches, namely query Q, key K, and value V. Each branch (Q, K, and V) is comprised of
+h linear layers (or heads), which enables the transformer to learn multiple views of the input. The
+dot-product between the output of linear layers in Q and K is then computed simultaneously for
+all h heads, and is followed by a softmax operation σ to produce an attention (or context-mapping)
+matrix a ∈Rk×k×h. Another dot-product is then computed between a and the output of linear layers
+in V to produce weighted sum output yw ∈Rk×dh×h, where dh = d
+
+h is the head dimension . The
+outputs of h heads are concatenated to produce a tensor with k d-dimensional tokens, which is then
+fed to another linear layer with weights WO ∈Rd×d to produce the output of MHA y ∈Rk×d.
+Mathematically, this operation can be described as:
+
+
+
+
+
+⟨σ
+
+0, xWK
+0⟩
+
+
+ 
+
+⟨xWQ
+
+y = Concat
+
+, xWV
+
+|
+{z
+}
+a0∈Rk×k
+
+
+
+0 ⟩, · · · , ⟨σ
+
+
+
+
+
+
+WO
+(1)
+
+h ⟩
+
+h, xWK
+
+h⟩
+
+⟨xWQ
+
+, xWV
+
+|
+{z
+}
+ah∈Rk×k
+
+i ∈Rd×dh are the weights of the i-th linear layer
+(or head) in Q, K, and V branches respectively. The symbol ⟨·, ·⟩denotes the dot-product operation.
+
+3.2
+Separable self-attention
+
+The structure of separable self-attention is inspired by MHA. Similar to MHA, the input x is processed
+using three branches, i.e., input I, key K, and value V. The input branch I maps each d-dimensional
+token in x to a scalar using a linear layer with weights WI ∈Rd. The weights WI serves as the
+latent node L in Fig. 4b. This linear projection is an inner-product operation and computes the
+distance between latent token L and x, resulting in a k-dimensional vector. A softmax operation is
+then applied to this k-dimensional vector to produce context scores cs ∈Rk. Unlike transformers
+that compute the attention (or context) score for each token with respect to all k tokens, the proposed
+
+4
+
+================================================================================
+===== PAGE 5 =====
+================================================================================
+
+GVwmvBJZIyCJBYkM0gyrKCkWwobsikbYoE0XnpvUjce2dto1G+je/gA9jCL+AkI0RarmTp6Jz78Dmi0spTmv5oJbdu37l7b+9+8HDR4+fdLpPj70NTuJIWm3dqQCPWhkckSKNp5VDKIXGE7H4tNZPLtB5Zc1XWlY4KWFu1ExJoEhNO9ygXNlagIRNLhVrVftnPCK6kNj0L2pnC2CJC6QLhHNiuc53+pkF2h4X/U5mIL3z/txE3xd9O0sH6ab4TZA1oMeaOp2Wy/ywspQoiGpwftxlY0qcGRkhrj+uCxArmAOY4jNFCin9SbDFb8VWQKPrMuPkN8w/47UPp/bIUsbMEOvPXtTX5P20caPZ+UitTBUIjt4dmQXOyfB0oL5RDSXoZAUin4l+5PAMHkmLsO1eEtYuYjt9xUpdBk3L2ctdfcaEq3zi82lpsx0Sz6/ndBMdvB9m7wf6X/d7wY5PtHnvOXrLXLGMHbMg+syM2YpJ9Zz/ZL/Y76SYHyYdkuG1NWs3M7ZTyeEf4B/Mbw=</latexit>Inner-product between
+token i and j
+j
+
+i
+j
+
+Query tokens
+Key tokens
+
+qMeiF48KVoV2Ldn0bRua3SzJW7Use/DXeFV/jZ7Eqz9CTGsP1joQGbeyQTJFIYdN03pzA1PTM7N79QXFxaXlktra1fGpVqDnWupNLXATMgRQx1FCjhOtHAokDCVdA7GfhXt6CNUPEF9hPwI9aJRSg4Qyu1SptNhHsc3pMFMoU8YzeZt0e9nTxvlcpuxR2CThJvRMpkhLNW6avZVjyNIEYumTENz03Qz5hGwSXkxWZqIG8xzrQsDRmERg/G4bndNsqbRoqbU+MdKj+3shYZEw/CuxkxLBr/noD8T+vkWJ45GciTlKEmP8EhamkqOigEdoWGjKviWMa2HfSnmXacbR9jaWEijVQxaYsZ9kUSpRaHWXF21h3t96JsnlfsU7qFTPq+Xa8ai6ebJtsgu8cghqZFTckbqhJMH8kieyLPz4rw6787Hz2jBGe1skDE4n9+A6r0</latexit>a1,10
+
+1’
+
+1
+
+RdSj6EGPClaFtpZsOtXQbLIks2pZ9uKv8aq/xYt/xZNpuwerDgQeb2by8h4JYyks+v6nV5ianpmdK86XFhaXlfKldVrqxPDocG1OY2ZBakUNBAgRJuYwMsCiXchP3TYf/mEYwVWl3hIZ2xO6V6AnO0FGd8kYL4RlH96RnBkBlKbtL63s02MmyTrnq1/xR0b8gyEGV5HXRqXibra7mSQKuWTWNgM/xnbKDAouISu1Egsx4312D0HFYvAtORfEa3HdOlPW3cUhH7M+NlEXWDqLQTUYMH+zv3pD8r9dMsHfUToWKEwTFx0K9RFLUdJgJ7QoDHOXAcaNcG+l/IEZxtElN6ESat1HFtoJ2mUSBRGP036z6K2OYOn8cWSy7R4Hd+f8F1vRYc1PYv96vHJ3m2RbJOtsguCcghOSbn5I0Ccv5JW8kXfvw/squF8yHi14+c4amajC4jcT/7US</latexit>a2,10
+
+a3,10
+
+oh6LXjxWsLbQriWbvtXQ7GZJ3qpl2YO/xqv6a/QkXv0RYlp7sOpAYJh5L5NMkEh0HVfnanpmdm5+cJCcXFpeW1tLZ+YVSqOTS4kq3AmZAihgaKFBCK9HAokBCM+ifDP3mDWgjVHyOgwT8iF3FIhScoZW6pXIH4Q5H92SBTCHP2GXm7dK97Tzvlipu1R2B/iXemFTIGPVu6bPTUzyNIEYumTFtz03Qz5hGwSXkxU5qIG8z6gbWnMIjB+NgrP6ZVejRU2p4Y6Uj9uZGxyJhBFNjJiOG1+e0Nxf+8dorhkZ+JOEkRYv4dFKaSoqLDRmhPaOAoB5YwroV9K+XTDOtreJlECpPrLATPwki1KJQqvbvGgL837X85dc7FW9g+r+2X6ldjyurkDKZJPsEI8ckho5JXSIJzckwfySJ6cZ+fFeXPev0enPHOBpmA8/EFf7aq9Q=</latexit>a1,20
+
+a2,20
+
+2
+
+2’
+
+a3,20
+
+a1,30
+
+a2,30
+
+3’
+
+3
+
+a3,30
+
+Compute attention matrix a
+
+(a) Self-attention in transformers
+
+M+5X8e8UtJhkvyK4gcPHz1+sve0t3/w7Plh/+jFuTO1FTARhl7yZkDJTVMUKCy8oCK7mC782vIXK7BOGj3GdQWzki20LKRgGFLz/irjsJDaI+O1YrbxqulCLfox2YJmg6vh+8cXTFVg6PMAnWCKcgbmV0q+NrKoxuYeBMUAyzkuEVL7yYu+anv/5AvzfD0BV0/nfMvD9IRskm6H2QdmBAujibH0Wvs9yIugSNQjHnpmlS4cwzi1IoCO1rBxUTS7aAaYCaleBmfmNQ9+GTE4LY8PTSDfZfys8K51blzwo293dXa5N/o+b1liczLzUVY2gxXZQUSuKhrZu01xaEKjWATBhZdiVitmcDwJztTuDHL4I7bucSXtUJpzc3uflKVq678HZ7Yi84mt717z4/zhKP42OfxwPTr903u6RV+QNeU9S8pmckm/kjEyIL+jONqPDuJRPI6n8WwrjaOu5iXZibj4A0H1UE=</latexit>Token j’s values are scaled
+by context score csj,L
+
+lKQYBHERUmkqMuiG5ct2Ae0oUwm03boZCbM3FRL6Be41W/xW1y4E7f+gtM2C9N64MLh3Hu59xw/4kyD43xYa+sbm1vbuZ387t7+wWGheNTUMlaENojkUrV9rClngjaAaftSFEc+py2/NH9rN8aU6WZFI8wiagX4oFgfUYwGKl+2SuUnLIzh71K3JSUIpar2idgNJ4pAKIBxr3XGdCLwEK2CE02m+G2saYTLCA9oxVOCQai+Zfzq1z40S2H2pTAmw5+rfjQSHWk9C30yGIZ6uTcT/+t1YujfegkTUQxUkMWhfsxtkPbMth0wRQnwiSGYKGZ+tckQK0zAhJO54ks5AuzrjJMkjDkwJZ+y/oIxi3Tq8HlhMW8SdZfzWyXNq7J7Xa7UK6XqXZptDp2gM3SBXHSDqugB1VADEUTRC3pFb9a79Wl9Wd+L0TUr3TlGVg/vzHTrEw=</latexit>⇤cs
+
+j,L
+
+Key tokens
+
+Input tokens
+
+ct2Ae0oUwm03boZCbM3FRL6Be41W/xW1y4E7f+gtM2C9N64MLh3Hu59xw/4kyD43xYa+sbm1vbuZ387t7+wWGheNTUMlaENojkUrV9rClngjaAaftSFEc+py2/NH9rN8aU6WZFI8wiagX4oFgfUYwGKl+2SuUnLIzh71K3JSUIpar2idgNJ4pAKIBxr3XGdCLwEK2CE02m+G2saYTLCA9oxVOCQai+Zfzq1z40S2H2pTAmw5+rfjQSHWk9C30yGIZ6uTcT/+t1YujfegkTUQxUkMWhfsxtkPbMth0wRQnwiSGYKGZ+tckQK0zAhJO54ks5AuzrjJMkjDkwJZ+y/oIxi3Tq8HlhMW8SdZfzWyXNq7J7Xa7UK6XqXZptDp2gM3SBXHSDqugB1VADEUTRC3pFb9a79Wl9Wd+L0TUr3TlGVg/vzHTrEw=</latexit>⇤
+
+1,L
+
+zJS2G4XslmJmdm19YXKour6yurdc2Nq+tzo2AltBKm1vOLCiZQgslKrjNDLCEK7jhg9NR/eYRjJU6vcJhBt2E3acyloKhl3q1/Q7CE47/cVzlULhOwvCBx070bHnokN6XhS9Wj1shGPQnyQqSZ2UuOhtVHY7fS3yBFIUilnbjsIMu4ZlEJBUe3kFjImBuwe2p6mLAHbdeM7CrvlT6NtfEvRTpWv04lg7TLjvHB1rv9dG4m+1do7x36TaZYjpGKyKM4VRU1H4dC+NCBQDT1hwkh/KxUPzDCBPsKpLVzrATJup5y4JFcojf4/7a/KDNbOnyaWKz6RKPv+f0k10eN6LjRvGzWT/6V2S6SHbJHDkhE/pATckYuSIsI8kxeyCt5q3wEM0E1WJm0BpVyZotMIdj+BH7YuLE=</latexit>cs
+
+1’
+
+1
+
+1,L
+
+cs
+
+39/YPDkvlo5aWRhHaJL1fGxpyFtAkMO1EimLhc9r2x3dpvz2hSjMZPsI0op7Aw5ANGMGQSj1tRL9UcarOHPYqcTNSQRka/bJ12gskMYKGQDjWus6EXgxVsAIp7Niz2gaYTLGQ9pNaIgF1V48f3ZmnydKYA+kSioEe67+3Yix0Hoq/GRSYBjp5V4q/tfrGhjceDELIwM0JItDA8NtkHbq3A6YogT4NCGYKJb8apMRVphAk/ui/lGLCvc05iYTgwJZ/y/oIJi3Tm8HlhsZgk6i7nt0pal1X3qlp7qFXqt1m2BXSCztAFctE1qN71EBNRNAIvaBX9Ga9W5/Wl/W9GF2zsp1jlIP18wtqP63x</latexit>X
+
+cv
+
+ct2Ae0oUwm03boZCbM3FRL6Be41W/xW1y4E7f+gtM2C9N64MLh3Hu59xw/4kyD43xYa+sbm1vbuZ387t7+wWGheNTUMlaENojkUrV9rClngjaAaftSFEc+py2/NH9rN8aU6WZFI8wiagX4oFgfUYwGKl+2SuUnLIzh71K3JSUIpar2idgNJ4pAKIBxr3XGdCLwEK2CE02m+G2saYTLCA9oxVOCQai+Zfzq1z40S2H2pTAmw5+rfjQSHWk9C30yGIZ6uTcT/+t1YujfegkTUQxUkMWhfsxtkPbMth0wRQnwiSGYKGZ+tckQK0zAhJO54ks5AuzrjJMkjDkwJZ+y/oIxi3Tq8HlhMW8SdZfzWyXNq7J7Xa7UK6XqXZptDp2gM3SBXHSDqugB1VADEUTRC3pFb9a79Wl9Wd+L0TUr3TlGVg/vzHTrEw=</latexit>⇤
+
+2,L
+
+2’
+
+4VF1eWV1br238uLE6NxyaXEt7mJmQoFTRQo4S4zwNJYwm08OB/Vbx/BWKHVNQ4z6KTsQYlEcIZe6tb2gjPOP7H/TYAqnDtlGE/Thzv2uLeHR7Qy6Lo1uphIxyDfiVRSeqkxFV3o7Ld7mep6CQS2ZtKwoz7DhmUHAJRbWdW8gYH7AHaHmqWAq248aHFHTXKz2aOfQjpWP04lo7TGPfOTrWfq6NxO9qrRyTXx0nVJYjKD5ZlOSoqajdGhPGOAoh54wboS/lfI+M4yjz3BqS6z1AFlsp5y4NJcojH6a9td7FJktHT5PLFZ9otHn/L6Sm8NGdNw4+nNUPz0rs10kP8kO2ScROSGn5IJckSbh5IW8kr/kX+UtmA2Wg9VJa1ApZzbJFIKtdzcduQU=</latexit>cs
+
+2
+
+L
+
+2,L
+
+cs
+
+3,L
+
+cs
+
+⇤
+
+3,L
+
+3’
+
+3
+
+cs
+
+Compute context vector cv
+
+Compute context scores cs
+
+(b) Proposed separable self-attention method
+
+Figure 4: Example illustrating the interaction between tokens to learn global representations
+in different attention layers. In (a), each query token computes the distance with all key tokens via
+dot-product. These distances are then normalized using softmax to produce an attention matrix a,
+which encodes contextual relationships. In (b), the inner product between input tokens and latent
+token L is computed. The resultant vector is normalized using softmax to produce context scores cs.
+These context scores are used to weight key tokens and produce a context vector cv, which encodes
+contextual information.
+
+method only computes the context score with respect to a latent token L. This reduces the cost of
+computing attention (or context) scores from O(k2) to O(k).
+
+The context scores cs are used to compute a context vector cv. Speciﬁcally, the input x is linearly
+projected to a d-dimensional space using key branch K with weights WK ∈Rd×d to produce an
+output xK ∈Rk×d. The context vector cv ∈Rd is then computed as a weighted sum of xK as:
+
+cv =
+
+i=1
+
+cs(i)xK(i)
+(2)
+
+The context vector cv is analogous to the attention matrix a in Eq. (1) in a sense that it also encodes
+the information from all tokens in the input x, but is cheap to compute.
+
+The contextual information encoded in cv is shared with all tokens in x. To do so, the input x
+is linearly projected to a d-dimensional space using a value branch V with weights WV ∈Rd×d,
+followed by a ReLU activation to produce an output xV ∈Rk×d. The contextual information in cv
+is then propagated to xV via broadcasted element-wise multiplication operation. The resultant output
+is then fed to another linear layer with weights WO ∈Rd×d to produce the ﬁnal output y ∈Rk×d.
+Mathematically, separable self-attention can be deﬁned as:
+
+
+
+
+
+
+
+
+
+
+
+
+
+cs∈Rk
+z
+}|
+{
+σ (xWI) ∗xWK
+
+X
+
+
+
+
+
+
+
+y =
+
+|
+{z
+}
+cv∈Rd
+
+
+
+
+
+
+
+
+
+WO
+(3)
+
+∗ReLU (xWV)
+
+where ∗and P are broadcastable element-wise multiplication and summation operations, respectively.
+
+Comparison with self-attention methods
+Fig. 1 compares the proposed method with Transformer
+and Linformer. Because time complexity of self-attention methods do not account for the cost of
+operations that are used to implement these methods, some of the operations may become bottleneck
+on resource-constrained devices. For holistic understanding, module-level latency on a single CPU
+core with varying k is also measured in addition to theoretical metrics. The proposed separable
+self-attention is fast and efﬁcient as compared to MHA in Transformer and Linformer.
+
+Besides these module-level results, when we replaced the MHA in the transformer with the proposed
+self-separable attention in the MobileViT architecture, we observe 3× improvement in inference
+
+5
+
+================================================================================
+===== PAGE 6 =====
+================================================================================
+
+Table 1: Effect of different self-attention methods on the performance of MobileViT [4] on the
+ImageNet-1k dataset. Here, all models have similar number of parameters and FLOPs, and latency is
+measured on iPhone12.
+
+Attention unit
+Latency ↓
+Top-1 ↑
+
+Self-attention in Transformer (Fig. 3a; [5])
+9.9 ms
+78.4
+Self-attention in Linformer (Fig. 3b; [10])
+10.2 ms
+78.2
+Separable self-attention (Ours; Fig. 3c)
+3.4 ms
+78.1
+
+speed with similar performance on the ImageNet-1k dataset (Table 1). These results show the
+efﬁcacy of the proposed separable self-attention at the architecture-level. Note that self-attention
+in Transformer and Linformer yields similar results for MobileViT. This is because the number of
+tokens k in MobileViT is fewer (k ≤1024) as compared to language models, where Linformer is
+signiﬁcantly faster than the transformer.
+
+Relationship with additive addition
+The proposed approach resembles the attention mechanism
+of Bahdanau et al. [26], which also encodes the global information by taking a weighted-sum of
+LSTM outputs at each time step. Unlike [26], where input tokens interact via recurrence, the input
+tokens in the proposed method interact only with a latent token.
+
+3.3
+MobileViTv2 architecture
+
+To demonstrate the effectiveness of the proposed separable self-attention on resource-constrained
+devices, we integrate separable self-attention with a recent ViT-based model, MobileViT [4]. Mobile-
+ViT is a light-weight, mobile-friendly hybrid network that delivers signiﬁcantly better performance
+than other competitive CNN-based, transformer-based, or hybrid models, including MobileNets
+[27, 24, 25]. To avoid ambiguity, we refer to MobileViT as MobileViTv1 in the rest of the paper.
+
+Speciﬁcally, we replace MHA in the transformer block in the MobileViTv1 with the proposed
+separable self-attention method. We call the resultant architecture MobileViTv2. We also do not
+use the skip-connection and fusion block in the MobileViT block (Fig. 1b in [4]) as it improves the
+performance marginally (Fig. 12 in [4]). Furthermore, to create MobileViTv2 models at different
+complexities, we uniformly scale the width of MobileViTv2 network using a width multiplier
+α ∈{0.5, 2.0}. This is in contrast to MobileViTv1 which trains three speciﬁc architectures (XXS, XS,
+and S) for mobile devices. More details about MobileViTv2’s architecture are given in Appendix A.
+
+4
+Experimental results
+
+4.1
+Object classiﬁcation on the ImageNet dataset
+
+Training on ImageNet-1k from scratch
+We train MobileViTv2 for 300 epochs with an effective
+batch size of 1024 images (128 images per GPU × 8 GPUs) using AdamW [28] on the ImageNet-1k
+dataset [29] with 1.28 million and 50 thousand training and validation images respectively. We
+linearly increase the learning rate from 10−6 to 0.002 for the ﬁrst 20k iterations. After that, the
+learning rate is decayed using a cosine annealing policy [30]. To reduce stochastic noise during
+training, we use exponential moving average (EMA) [31] as we ﬁnd it helps larger models. We
+implement our models using CVNets [4, 32], and use their provided scripts for data processing,
+training, and evaluation.
+
+Pre-training on ImageNet-21k-P and ﬁnetuning on ImageNet-1k
+We train on the ImageNet-
+21k (winter’21 release) that contains about 13 million images across 19k classes. Speciﬁcally, we
+follow [33] to pre-process (e.g., remove classes with fewer samples) the dataset and split it into
+about 11 million and 522 thousand training and validation images spanning over 10,450 classes,
+respectively. Following [33], we refer to this pre-processed dataset as ImageNet-21k-P. Note that the
+ImageNet-21k-P validation set does not overlap with the validation and test sets of ImageNet-1k.
+
+We follow [33] for pre-training MobileViTv2 on ImageNet-21k-P. For faster convergence, we
+initialize MobileViTv2 models with ImageNet-1k weights and ﬁnetune it on ImageNet-21k-P for 80
+
+6
+
+================================================================================
+===== PAGE 7 =====
+================================================================================
+
+Table 2: Classiﬁcation performance on the ImageNet-1k validation set. Here, NS means that we
+are not able to measure the latency on mobile device as some operations (e.g., cyclic shifts) are not
+supported on mobile devices. Following [4], latency is measured on iPhone12 with a batch size of 1.
+Similar to [3, 34], throughput is measured on NVIDIA V100 GPUs with a batch size of 128. The
+rows are grouped by network parameters.
+
+Row #
+Model
+Type
+Neural
+Extra
+Image
+# Params ↓
+FLOPs ↓
+Latency ↓
+Throughput ↑
+Top-1 ↑
+search?
+data
+size
+(in ms)
+(images/ sec)
+(in %)
+
+R1
+MobileViT-XXS [4]
+Hybrid
+
+None
+2562
+1.3 M
+0.4 G
+4.8
+4225
+69.0
+R2
+MobileViTv2-0.5
+Hybrid
+
+None
+2562
+1.4 M
+0.5 G
+1.6
+4595
+70.2
+R3
+MobileFormer-52 [35]
+Hybrid
+
+None
+2242
+3.6 M
+52 M
+7.1
+4445
+68.7
+
+R4
+MobileViTv2-1.0
+Hybrid
+
+None
+2562
+4.9 M
+1.8 G
+3.4
+2351
+78.1
+R5
+EfﬁcientNet-b0 [36]
+CNN
+
+None
+2242
+5.3 M
+422 M
+1.6
+4619
+77.1
+R6
+DeiT-Tiny [2]
+Transformer
+
+None
+2242
+5.5 M
+1.3 G
+3.4
+4541
+72.2
+R7
+MobileViT-S [4]
+Hybrid
+
+None
+2562
+5.6 M
+2.0 G
+3.4
+1986
+78.4
+
+R8
+EfﬁcientNet-b2 [36]
+CNN
+
+None
+2882
+9.1 M
+1.2 G
+3.8
+2032
+80.1
+R9
+MobileViTv2-1.5
+Hybrid
+
+None
+2562
+10.6 M
+4.0 G
+5.1
+1418
+80.4
+R10
+MobileFormer-294 [35]
+Hybrid
+
+None
+2242
+11.8 M
+294 M
+40.7
+1402
+77.9
+
+R11
+MobileViTv2-2.0
+Hybrid
+
+None
+2562
+18.5 M
+7.5 G
+7.5
+1105
+81.2
+R12
+Swin-T [3]
+Hybrid
+
+None
+2242
+28.3 M
+4.5 G
+NS
+1390
+81.3
+R13
+ConvNext-T [34]
+CNN
+
+None
+2242
+28.6 M
+4.5 G
+3.7
+1800
+82.1
+R14
+DeiT-Base [2]
+Transformer
+
+None
+2242
+86.6 M
+17.6 G
+13.2
+958
+81.8
+
+R15
+MobileViTv2-2.0
+Hybrid
+
+ImageNet-21k-P
+2562
+18.5 M
+7.5 G
+7.5
+1105
+82.4
+R16
+ConvNext-T [34]
+CNN
+
+ImageNet-21k
+2242
+28.6 M
+4.5 G
+3.7
+1800
+82.9
+
+R17
+MobileViTv2-2.0
+Hybrid
+
+ImageNet-21k-P
+3842
+18.5 M
+16.1 G
+17.0
+488
+83.4
+R18
+ConvNext-T [34]
+CNN
+
+ImageNet-21k
+3842
+28.6 M
+13.1 G
+8.6
+645
+84.1
+
+epochs with an effective batch size of 4096 images (128 images per GPU x 32 GPUs). We do not use
+any linear warm-up. Other settings follow ImageNet-1k training.
+
+We ﬁnetune ImageNet-21k-P pre-trained models on ImageNet-1k for 50 epochs using SGD with
+momentum (0.9) and cosine annealing policy with an effective batch size of 256 images (128 images
+per GPU × 2 GPUs).
+
+Finetuning at higher resolution
+MobileViTv2 is a hybrid architecture that combines convolution
+and separable self-attention to learn visual representations. Unlike many ViT-based models (e.g.,
+DeiT), MobileViTv2 does not require adjustment to patch embeddings or positional biases for
+different input resolutions and is simple to ﬁnetune. We ﬁnetune MobileViTv2 models at higher
+resolution (i.e., 384×384) for 10 epochs with a ﬁxed learning rate of 10−3 using SGD.
+
+Comparison with existing methods
+Table 2 and Fig. 2 compares MobileViTv2’s performance
+with recent methods1. We make following observations:
+
+• When MHA in MobileViTv1 is replaced with separable self-attention, the resultant model,
+MobileViTv2, is faster and better (Fig. 2); validating the effectiveness of the proposed sepa-
+rable self-attention method for mobile ViTs.
+
+• Compared to transformer-based (including hybrid) models, MobileViTv2 models are fast on
+mobile devices. For example, MobileViTv2 is about 8× faster on a mobile device and delivers 2.5%
+better performance on the ImageNet-1k dataset than MobileFormer [35], even though MobileFormer
+is FLOP efﬁcient (R9 vs. R10). However, on GPU, both MobileFormer and MobileViTv2 run at a
+similar speed. The discrepancy in FLOPs and speed of MobileFormer across devices is primarily
+because of its architectural design. MobileFormer has conditional operations between mobile and
+former blocks. Such conditional operations, especially on resource-constrained devices, have a low
+degree of parallelism and create memory bottlenecks, resulting in a high latency network. Ma et al.
+[37] also makes a similar observation for CNN-based architectures.
+
+• MobileViTv2 bridges the latency gap between CNN- and ViT-based models on mobile devices
+while maintaining performance with similar or fewer parameters. For example, on a mobile device,
+ConvNexT [34] (CNN-based model) is 2× and 3.6× faster than MobileViTv2 (hybrid model)
+and DeiT (transformer-based model) for similar performance respectively (see R11, R13, and
+R14). The low latency of fully CNN-based models on mobile devices can be attributed to several
+device-level optimizations that have been done for CNN-based models over the past few years
+(e.g., dedicated hardware implementations for convolutions and folding batch normalization with
+
+1For additional results including ablations, see Appendix B, Appendix C, and Appendix E.
+
+7
+
+================================================================================
+===== PAGE 8 =====
+================================================================================
+
+Table 3: Semantic segmentation results on the ADE20k and the PASCAL VOC 2012 datasets.
+Here, throughput, network parameters, and FLOPs are measured on the ADE20k dataset for an input
+with a spatial resolution of 512 × 512. mIoU (mean intersection over union) score is calculated for
+a single scale only. Throughput is calculated using a batch size of 32 images on a single NVIDIA
+V100 GPU with 32 GB memory and is an average of over 50 iterations (excluding 10 iterations for
+warmup). We do not report latency on a mobile device as some of the operations (e.g., pyramid
+pooling in PSPNet) are not optimally implemented for mobile devices. The baseline results are from
+the MMSegmentation library [45]. Rows are grouped by network parameters.
+
+Seg.
+ImageNet-1k
+Image
+Throughput ↑
+# Params ↓
+FLOPs ↓
+mIoU ↑
+
+Model
+Backbone
+Size
+(images/sec)
+(in millions)
+(in billions)
+ADE20k [42]
+PASCAL VOC [43]
+
+PSPNet [40]
+MobileViTv2-0.5 (Ours)
+5122
+439
+3.6 M
+15.4 G
+31.8
+74.6
+MobileNetv2 [24]
+5122
+276
+13.7 M
+53.1 G
+29.7
+–
+
+PSPNet [40]
+MobileViTv2-1.75 (Ours)
+5122
+114
+22.5 M
+95.9 G
+39.8
+80.2
+ResNet-50 [44]
+5122
+119
+49.1 M
+179.1 G
+41.1
+76.8
+
+DeepLabv3 [41]
+MobileViTv2-0.75 (Ours)
+5122
+241
+9.6 M
+40.0 G
+34.7
+75.1 (α=0.5)
+MobileNetv2 [24]
+5122
+246
+18.7 M
+75.4 G
+34.1
+–
+
+DeepLabv3 [41]
+MobileViTv2-2.0 (Ours)
+5122
+90
+34.0 M
+147.0 G
+40.9
+80.3 (α=1.5)
+ResNet-50 [44]
+5122
+103
+68.2 M
+270.3 G
+42.4
+79.1
+
+convolutions). ViT-based models still lack such optimizations and therefore, the resultant inference
+graphs are sub-optimal. Though MobileViTv2 bridges the latency gap between CNNs and ViTs,
+we believe the latency of ViT-based models will improve in the future with similar optimizations.
+
+• The delta in speed (on GPU) between ConvNext and MobileViTv2 (R15-R18) at higher model
+complexities reduces from 1.6× to 1.3× when input resolution is increased from 224 × 224 (or
+256 × 256) to 384 × 384, suggesting ViT-based (including hybrid) models exhibit better scaling
+properties as compared to CNNs. This is because of a higher degree of parallelism that ViT-based
+models offer at a large scale [1, 38]. Our results on down-stream tasks in Section 4.2 and previous
+work on scaling ViTs [1, 39] further supports this observation.
+
+4.2
+Evaluation on down-stream tasks
+
+Semantic segmentation
+We integrate MobileViTv2 with two standard segmentation architectures,
+PSPNet [40] and DeepLabv3 [41], and study it on two standard semantic segmentation datasets,
+ADE20k [42] and PASCAL VOC 2012 [43]. For training details including hyper-parameters, see
+supplementary material.
+
+Table 3 and Fig. 2c compares the segmentation performance in terms of validation mean intersection
+over union (mIOU) of MobileViTv2 with different segmentation methods. MobileViTv2 delivers
+competitive performance at different complexities while having signiﬁcantly fewer parameters and
+FLOPs. Interestingly, the inference speed of MobileViTv2 models is comparable to CNN-based
+models, including light-weight MobileNetv2 and heavy-weight ResNet-50 [44] model. This is
+consistent with our observation in Section 4.1 (R17 vs. R18; Table 2) where we also observe that
+ViT-based models scale better than CNN’s at higher input resolutions and model complexities.
+
+Object detection
+We integrate MobileViTv2 with SSDLite [24] (SSD head [46] with separable
+convolutions) for mobile object detection, and study its performance on MS-COCO dataset [47].
+We follow [4] for training detection models. Table 4 and Fig. 2b compares SSDLite’s detection
+performance in terms of validation mean average precision (mAP) using different ImageNet-1k
+backbones. MobileViTv2 delivers competitive performance to models with different capacities,
+further validating the effectiveness of the proposed self-separable attention method.
+
+5
+Visualizations of self-separable attention scores
+
+Fig. 5 visualizes what the context scores learn at different output strides2 of MobileViTv2 network.
+We found that separable self-attention layers pay attention to low-, mid-, and high-level features, and
+allow MobileViTv2 to learn representations from semantically relevant image regions.
+
+2Output stride is the ratio of the spatial dimension of the input to the feature map.
+
+8
+
+================================================================================
+===== PAGE 9 =====
+================================================================================
+
+Table 4: Object detection using SSDLite on the MS-COCO dataset. Here, throughput is measured
+with a batch of 128 images on the NVIDIA V100 GPU, and is an average over 50 iterations (excluding
+10 iterations for warmup). Latency on a mobile device is not reported as some operations (e.g., hard
+swish) are not optimally implemented for such devices. Rows are grouped by network parameters.
+
+ImageNet-1k
+Image
+Throughput ↑
+# Params ↓
+FLOPs ↓
+mAP ↑
+backbone
+Size
+(images/sec)
+(in millions)
+(in billions)
+
+MobileViTv1-XXS
+3202
+2246
+1.7 M
+0.9 G
+19.9
+MobileViTv2-0.5 (Ours)
+3202
+2782
+2.0 M
+0.9 G
+21.2
+MobileViTv2-0.75 (Ours)
+3202
+1876
+3.6 M
+1.8 G
+24.6
+Mobilenetv2
+3202
+3052
+4.3 M
+0.8 G
+22.1
+MobileNetv3
+3202
+3884
+5.0 M
+0.6 G
+22.0
+MobileNetv1
+3202
+4330
+5.1 M
+1.3 G
+22.2
+
+MobileViTv2-1.75
+3202
+780
+14.9 M
+9.0 G
+29.5
+ResNet-50
+3002
+744
+22.9 M
+20.2 G
+25.2
+
+Figure 5: Context score maps at different output strides (OS) of MobileViTv2 model. Observe
+how context scores pay attention to semantically relevant image regions. (Left to right: input image,
+context scores at OS=8, context scores at OS=16, and context scores at OS=32). For more examples
+and details about context score map generation, see Appendix D.
+
+6
+Conclusions
+
+Transformer-based vision models are slow on mobile devices as compared to CNN-based models
+because multi-headed self-attention is expensive on resource-constrained devices. In this paper, we
+introduce a separable self-attention method that has linear complexity and can be implemented using
+hardware-friendly element-wise operations. Experimental results on standard datasets and tasks
+demonstrate the effectiveness of the proposed method over multi-headed self-attention.
+
+Acknowledgements
+
+We are grateful to Ali Farhadi, Peter Zatloukal, Oncel Tuzel, Rick Chang, Fartash Faghri, Farzad
+Abdolhosseini, Lailin Chen, and Max Horton for their helpful comments. We are also thankful to
+Apple’s infrastructure and open-source teams for their help with training infrastructure and open-
+source release of the code and pre-trained models.
+
+References
+
+[1] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas
+
+Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit,
+and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In
+International Conference on Learning Representations, 2021. URL https://openreview.net/forum?
+id=YicbFdNTTy.
+
+9
+
+================================================================================
+===== PAGE 10 =====
+================================================================================
+
+[2] Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco Massa, Alexandre Sablayrolles, and Hervé Jégou.
+
+Training data-efﬁcient image transformers & distillation through attention. In International Conference on
+Machine Learning, pages 10347–10357. PMLR, 2021.
+
+[3] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, and Baining Guo. Swin
+
+transformer: Hierarchical vision transformer using shifted windows. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 10012–10022, 2021.
+
+[4] Sachin Mehta and Mohammad Rastegari. Mobilevit: Light-weight, general-purpose, and mobile-friendly
+
+vision transformer.
+In International Conference on Learning Representations, 2022.
+URL https:
+//openreview.net/forum?id=vh-0sUt8HlG.
+
+[5] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz
+
+Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems,
+30, 2017.
+
+[6] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen,
+
+Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch: An imperative style, high-performance deep
+learning library. Advances in neural information processing systems, 32, 2019.
+
+[7] Rewon Child, Scott Gray, Alec Radford, and Ilya Sutskever. Generating long sequences with sparse
+
+transformers. arXiv preprint arXiv:1904.10509, 2019.
+
+[8] Nikita Kitaev, Łukasz Kaiser, and Anselm Levskaya. Reformer: The efﬁcient transformer. arXiv preprint
+
+arXiv:2001.04451, 2020.
+
+[9] Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer: The long-document transformer. arXiv
+
+preprint arXiv:2004.05150, 2020.
+
+[10] Sinong Wang, Belinda Z Li, Madian Khabsa, Han Fang, and Hao Ma. Linformer: Self-attention with linear
+
+complexity. arXiv preprint arXiv:2006.04768, 2020.
+
+[11] Niki Parmar, Ashish Vaswani, Jakob Uszkoreit, Lukasz Kaiser, Noam Shazeer, Alexander Ku, and Dustin
+
+Tran. Image transformer. In International Conference on Machine Learning, pages 4055–4064. PMLR,
+2018.
+
+[12] Jiezhong Qiu, Hao Ma, Omer Levy, Scott Wen-tau Yih, Sinong Wang, and Jie Tang. Blockwise self-
+
+attention for long document understanding. arXiv preprint arXiv:1911.02972, 2019.
+
+[13] Apoorv Vyas, Angelos Katharopoulos, and François Fleuret. Fast transformers with clustered attention.
+
+Advances in Neural Information Processing Systems, 33:21665–21674, 2020.
+
+[14] Shuohang Wang, Luowei Zhou, Zhe Gan, Yen-Chun Chen, Yuwei Fang, Siqi Sun, Yu Cheng, and Jingjing
+
+Liu. Cluster-former: Clustering-based sparse transformer for question answering. In Findings of the
+Association for Computational Linguistics: ACL-IJCNLP 2021, pages 3958–3968, 2021.
+
+[15] Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos,
+
+Peter Hawkins, Jared Davis, Afroz Mohiuddin, Lukasz Kaiser, et al. Rethinking attention with performers.
+arXiv preprint arXiv:2009.14794, 2020.
+
+[16] Sachin Mehta, Marjan Ghazvininejad, Srinivasan Iyer, Luke Zettlemoyer, and Hannaneh Hajishirzi. Delight:
+
+Deep and light-weight transformer. In International Conference on Learning Representations, 2021. URL
+https://openreview.net/forum?id=ujmgfuxSLrO.
+
+[17] Haiping Wu, Bin Xiao, Noel Codella, Mengchen Liu, Xiyang Dai, Lu Yuan, and Lei Zhang. Cvt:
+
+Introducing convolutions to vision transformers. In Proceedings of the IEEE/CVF International Conference
+on Computer Vision, pages 22–31, 2021.
+
+[18] Byeongho Heo, Sangdoo Yun, Dongyoon Han, Sanghyuk Chun, Junsuk Choe, and Seong Joon Oh.
+
+Rethinking spatial dimensions of vision transformers. In Proceedings of the IEEE/CVF International
+Conference on Computer Vision, pages 11936–11945, 2021.
+
+[19] Michael Ryoo, AJ Piergiovanni, Anurag Arnab, Mostafa Dehghani, and Anelia Angelova. Tokenlearner:
+
+Adaptive space-time tokenization for videos. Advances in Neural Information Processing Systems, 34,
+2021.
+
+[20] Wenhai Wang, Enze Xie, Xiang Li, Deng-Ping Fan, Kaitao Song, Ding Liang, Tong Lu, Ping Luo, and
+
+Ling Shao. Pyramid vision transformer: A versatile backbone for dense prediction without convolutions.
+In Proceedings of the IEEE/CVF International Conference on Computer Vision, pages 568–578, 2021.
+
+10
+
+================================================================================
+===== PAGE 11 =====
+================================================================================
+
+[21] Paulius Micikevicius, Sharan Narang, Jonah Alben, Gregory Diamos, Erich Elsen, David Garcia, Boris
+
+Ginsburg, Michael Houston, Oleksii Kuchaiev, Ganesh Venkatesh, and Hao Wu. Mixed precision training.
+In International Conference on Learning Representations, 2018. URL https://openreview.net/
+forum?id=r1gs9JgRZ.
+
+[22] Tim Dettmers, Mike Lewis, Sam Shleifer, and Luke Zettlemoyer. 8-bit optimizers via block-wise quantiza-
+
+tion. In International Conference on Learning Representations, 2022. URL https://openreview.net/
+forum?id=shpkpVXzo3h.
+
+[23] Xiaohua Zhai, Alexander Kolesnikov, Neil Houlsby, and Lucas Beyer. Scaling vision transformers, 2021.
+
+URL https://arxiv.org/abs/2106.04560.
+
+[24] Mark Sandler, Andrew Howard, Menglong Zhu, Andrey Zhmoginov, and Liang-Chieh Chen. Mobilenetv2:
+
+Inverted residuals and linear bottlenecks. In Proceedings of the IEEE conference on computer vision and
+pattern recognition, pages 4510–4520, 2018.
+
+[25] Andrew Howard, Mark Sandler, Grace Chu, Liang-Chieh Chen, Bo Chen, Mingxing Tan, Weijun Wang,
+
+Yukun Zhu, Ruoming Pang, Vijay Vasudevan, et al. Searching for mobilenetv3. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision, pages 1314–1324, 2019.
+
+[26] Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning
+
+to align and translate. arXiv preprint arXiv:1409.0473, 2014.
+
+[27] Andrew G Howard, Menglong Zhu, Bo Chen, Dmitry Kalenichenko, Weijun Wang, Tobias Weyand, Marco
+
+Andreetto, and Hartwig Adam. Mobilenets: Efﬁcient convolutional neural networks for mobile vision
+applications. arXiv preprint arXiv:1704.04861, 2017.
+
+[28] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on
+
+Learning Representations, 2019. URL https://openreview.net/forum?id=Bkg6RiCqY7.
+
+[29] Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang,
+
+Andrej Karpathy, Aditya Khosla, Michael Bernstein, et al. Imagenet large scale visual recognition challenge.
+International journal of computer vision, 115(3):211–252, 2015.
+
+[30] Ilya Loshchilov and Frank Hutter. Sgdr: Stochastic gradient descent with warm restarts. In International
+
+Conference on Learning Representations, 2017.
+
+[31] Boris T Polyak and Anatoli B Juditsky. Acceleration of stochastic approximation by averaging. SIAM
+
+journal on control and optimization, 30(4):838–855, 1992.
+
+[32] Sachin Mehta, Farzad Abdolhosseini, and Mohammad Rastegari. Cvnets: High performance library for
+
+computer vision. CoRR, 2022.
+
+[33] Tal Ridnik, Emanuel Ben-Baruch, Asaf Noy, and Lihi Zelnik-Manor. Imagenet-21k pretraining for the
+
+masses. arXiv preprint arXiv:2104.10972, 2021.
+
+[34] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feichtenhofer, Trevor Darrell, and Saining Xie. A
+
+convnet for the 2020s. arXiv preprint arXiv:2201.03545, 2022.
+
+[35] Yinpeng Chen, Xiyang Dai, Dongdong Chen, Mengchen Liu, Xiaoyi Dong, Lu Yuan, and Zicheng Liu.
+
+Mobile-former: Bridging mobilenet and transformer. arXiv preprint arXiv:2108.05895, 2021.
+
+[36] Mingxing Tan and Quoc Le. Efﬁcientnet: Rethinking model scaling for convolutional neural networks. In
+
+International conference on machine learning, pages 6105–6114. PMLR, 2019.
+
+[37] Ningning Ma, Xiangyu Zhang, Hai-Tao Zheng, and Jian Sun. Shufﬂenet v2: Practical guidelines for
+
+efﬁcient cnn architecture design. In Proceedings of the European conference on computer vision (ECCV),
+pages 116–131, 2018.
+
+[38] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind
+
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners.
+Advances in neural information processing systems, 33:1877–1901, 2020.
+
+[39] Xiaohua Zhai, Alexander Kolesnikov, Neil Houlsby, and Lucas Beyer. Scaling vision transformers. CoRR,
+
+abs/2106.04560, 2021.
+
+[40] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang Wang, and Jiaya Jia. Pyramid scene parsing
+
+network. In Proceedings of the IEEE conference on computer vision and pattern recognition, pages
+2881–2890, 2017.
+
+11
+
+================================================================================
+===== PAGE 12 =====
+================================================================================
+
+[41] Liang-Chieh Chen, George Papandreou, Florian Schroff, and Hartwig Adam. Rethinking atrous convolution
+
+for semantic image segmentation. arXiv preprint arXiv:1706.05587, 2017.
+
+[42] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela Barriuso, and Antonio Torralba. Scene parsing
+
+through ade20k dataset. In Proceedings of the IEEE conference on computer vision and pattern recognition,
+pages 633–641, 2017.
+
+[43] Mark Everingham, SM Eslami, Luc Van Gool, Christopher KI Williams, John Winn, and Andrew Zisserman.
+
+The pascal visual object classes challenge: A retrospective. International journal of computer vision, 111
+(1):98–136, 2015.
+
+[44] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition.
+
+In Proceedings of the IEEE conference on computer vision and pattern recognition, pages 770–778, 2016.
+
+[45] MMSegmentation Contributors. MMSegmentation: Openmmlab semantic segmentation toolbox and
+
+benchmark. https://github.com/open-mmlab/mmsegmentation, 2020.
+
+[46] Wei Liu, Dragomir Anguelov, Dumitru Erhan, Christian Szegedy, Scott Reed, Cheng-Yang Fu, and
+
+Alexander C Berg. Ssd: Single shot multibox detector. In European conference on computer vision, pages
+21–37. Springer, 2016.
+
+[47] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Dollár,
+
+and C Lawrence Zitnick. Microsoft coco: Common objects in context. In European conference on
+computer vision, pages 740–755. Springer, 2014.
+
+[48] Stefan Elfwing, Eiji Uchibe, and Kenji Doya. Sigmoid-weighted linear units for neural network function
+
+approximation in reinforcement learning. Neural Networks, 107:3–11, 2018.
+
+[49] Sachin Mehta, Mohammad Rastegari, Linda Shapiro, and Hannaneh Hajishirzi. Espnetv2: A light-weight,
+
+power efﬁcient, and general purpose convolutional neural network. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, pages 9190–9200, 2019.
+
+[50] Li Yuan, Yunpeng Chen, Tao Wang, Weihao Yu, Yujun Shi, Zihang Jiang, Francis EH Tay, Jiashi Feng,
+
+and Shuicheng Yan. Tokens-to-token vit: Training vision transformers from scratch on imagenet. In
+Proceedings of the IEEE/CVF international conference on computer vision, 2021.
+
+[51] Chun-Fu Chen, Quanfu Fan, and Rameswar Panda. CrossVit: Cross-attention multi-scale vision transformer
+
+for image classiﬁcation. In Proceedings of the IEEE/CVF International Conference on Computer Vision
+(ICCV), 2021.
+
+[52] Yawei Li, Kai Zhang, Jiezhang Cao, Radu Timofte, and Luc Van Gool. Localvit: Bringing locality to
+
+vision transformers. arXiv preprint arXiv:2104.05707, 2021.
+
+[53] Stéphane d’Ascoli, Hugo Touvron, Matthew Leavitt, Ari Morcos, Giulio Biroli, and Levent Sagun. Convit:
+
+Improving vision transformers with soft convolutional inductive biases. arXiv preprint arXiv:2103.10697,
+2021.
+
+[54] Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed, Dragomir Anguelov, Dumitru
+
+Erhan, Vincent Vanhoucke, and Andrew Rabinovich. Going deeper with convolutions. In Proceedings of
+the IEEE conference on computer vision and pattern recognition, pages 1–9, 2015.
+
+[55] Ekin D Cubuk, Barret Zoph, Jonathon Shlens, and Quoc V Le. Randaugment: Practical automated data
+
+augmentation with a reduced search space. In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition Workshops, pages 702–703, 2020.
+
+[56] Sangdoo Yun, Dongyoon Han, Seong Joon Oh, Sanghyuk Chun, Junsuk Choe, and Youngjoon Yoo.
+
+Cutmix: Regularization strategy to train strong classiﬁers with localizable features. In Proceedings of the
+IEEE/CVF international conference on computer vision, pages 6023–6032, 2019.
+
+[57] Hongyi Zhang, Moustapha Cisse, Yann N Dauphin, and David Lopez-Paz. mixup: Beyond empirical risk
+
+minimization. arXiv preprint arXiv:1710.09412, 2017.
+
+[58] Zhun Zhong, Liang Zheng, Guoliang Kang, Shaozi Li, and Yi Yang. Random erasing data augmentation.
+
+In Proceedings of the AAAI conference on artiﬁcial intelligence, 2020.
+
+[59] Ross Wightman, Hugo Touvron, and Hervé Jégou. Resnet strikes back: An improved training procedure in
+
+timm. arXiv preprint arXiv:2110.00476, 2021.
+
+12
+
+================================================================================
+===== PAGE 13 =====
+================================================================================
+
+A
+Detailed architecture of MobileViTv2
+
+MobileViTv2’s architecture follows MobileViTv1 [4] and is given in Table 5. MobileViTv2 block, shown
+in Fig. 6, makes two changes to the MobileViTv1 block: (1) it replaces the multi-headed self-attention with
+the proposed separable self-attention to learn global representations and (2) it does not use fusion block and
+skip-connection (see Fig. 1b in [4]) as they improve the performance marginally (see Fig. 12 in [4]). The
+expansion factor in MobileNetv2 [24] blocks and feed-forward layers is two. Similar to [4], we use Swish [48]
+as a non-linear activation function. Unlike MobileViTv1 that creates three speciﬁc architectures (XXS, XS,
+and S) for mobile devices, we uniformly scale the width of MobileViTv2 network using a width multiplier
+α ∈0.5, 2.0 to create models at different complexities.
+
+B
+MobileViTv2’s classiﬁcation performance
+
+ImageNet-1k
+Table 6 shows the results of MobileViTv2 on the ImageNet-1k dataset.
+Finetuning
+MobileViTv2 models at higher resolution (384 × 384) shows improvement across the board. For example, the
+performance of MobileViTv2-0.50 with 1.4 million parameters improves by about 2% when ﬁnetuned at higher
+resolution (R1 vs. R2). Similarly, pre-training on the ImageNet-21k-P dataset helps improve the performance of
+MobileViTv2 models. For example, ImageNet-21k-P pretraining improves the performance of MobileViTv2-
+2.0 improves by 1.2% (R17 vs. R18). Notably, MobileViTv2 models pretrained on the ImageNet-21k-P are
+able to achieve the similar performance with fewer FLOPs to models ﬁnetuned on ImageNet-1k with a higher
+resolution (e.g., R10 vs. R11; R14 vs. R15; R18 vs. R19 in Table 6).
+
+ImageNet-21k-P
+Table 7 shows the results on the ImageNet-21k-P validation dataset. The performance of
+MobileViTv2 improves with increase in model size.
+
+x
+Depth-wise
+conv
+Point-wise
+conv
+Unfold
+Separable
+self-attention
+
+B×
+
+L
+Feed-forward
+network
+
+L
+
+Fold
+Point-wise
+conv
+y
+
+Figure 6: MobileViTv2 block. Here, depth-wise convolution uses a kernel size of 3 × 3 to encode
+local representations. Similar to [4], unfolding and folding operations uses a patch height and width
+of two respectively. The separable self-attention and feed-forward layers are repeated B× before
+applying the folding operation.
+
+Table 5: MobileViTv2 architecture. Here, d represents dimensionality of the input to the separable
+self-attention layer, B denotes the repetition of transformer block with separable self-attention inside
+the MobileViTv2 block (Fig. 6), and MV2 indicates MobileNetv2 block. Similar to MobileViTv1
+block, we set kernel size as three and spatial dimensions of patch (height h and width w) as two in
+the MobileViTv2 block.
+
+Layer
+Output size
+Output stride
+Repeat
+Output channels
+
+Image
+256 × 256
+1
+
+Conv-3 × 3, ↓2
+128 × 128
+2
+1
+32α
+MV2
+1
+64α
+
+MV2, ↓2
+64 × 64
+4
+1
+128α
+MV2
+2
+128α
+
+MV2, ↓2
+32 × 32
+8
+1
+256α
+MobileViTv2 block (Fig. 6; B = 2)
+1
+256 ∗α (d = 128α)
+
+MV2, ↓2
+16 × 16
+16
+1
+384α
+MobileViTv2 block (Fig. 6; B = 4)
+1
+384α (d = 192α)
+
+MV2, ↓2
+
+8 × 8
+32
+1
+512α
+MobileViTv2 block (Fig. 6; B = 3)
+1
+512α (d = 256α)
+
+Global pool
+1 × 1
+256
+1
+512α
+Linear
+1000
+
+13
+
+================================================================================
+===== PAGE 14 =====
+================================================================================
+
+Table 6: Classiﬁcation performance of MobileViTv2 on the ImageNet-1k dataset. Here, † indi-
+cates ﬁnetuning at higher resolution.
+
+Row #
+Model
+Image size
+Extra data
+# Params ↓
+FLOPs ↓
+Top-1 ↑
+
+R1
+MobileViTv2-0.50
+2562
+None
+1.4 M
+0.5 G
+70.2
+R2
+MobileViTv2-0.50†
+3842
+None
+1.4 M
+1.0 G
+72.1
+
+R3
+MobileViTv2-0.75
+2562
+None
+2.9 M
+1.0 G
+75.6
+R4
+MobileViTv2-0.75†
+3842
+None
+2.9 M
+2.3 G
+77.0
+
+R5
+MobileViTv2-1.00
+2562
+None
+4.9 M
+1.8 G
+78.1
+R6
+MobileViTv2-1.00†
+3842
+None
+4.9 M
+4.1 G
+79.7
+
+R7
+MobileViTv2-1.25
+2562
+None
+7.5 M
+2.8 G
+79.6
+R8
+MobileViTv2-1.25†
+3842
+None
+7.5 M
+6.3 G
+80.9
+
+R9
+MobileViTv2-1.50
+2562
+None
+10.6 M
+4.0 G
+80.4
+R10
+MobileViTv2-1.50
+2562
+ImageNet-21k-P
+10.6 M
+4.0 G
+81.5
+R11
+MobileViTv2-1.50†
+3842
+None
+10.6 M
+9.1 G
+81.5
+R12
+MobileViTv2-1.50†
+3842
+ImageNet-21k-P
+10.6 M
+9.1 G
+82.6
+
+R13
+MobileViTv2-1.75
+2562
+None
+14.3 M
+5.5 G
+80.8
+R14
+MobileViTv2-1.75
+2562
+ImageNet-21k-P
+14.3 M
+5.5 G
+81.9
+R15
+MobileViTv2-1.75†
+3842
+None
+14.3 M
+12.3 G
+82.0
+R16
+MobileViTv2-1.75†
+3842
+ImageNet-21k-P
+14.3 M
+12.3 G
+82.9
+
+R17
+MobileViTv2-2.00
+2562
+None
+18.5 M
+7.2 G
+81.2
+R18
+MobileViTv2-1.75
+2562
+ImageNet-21k-P
+18.5 M
+7.2 G
+82.4
+R19
+MobileViTv2-2.00†
+3842
+None
+18.5 M
+16.1 G
+82.2
+R20
+MobileViTv2-1.50†
+3842
+ImageNet-21k-P
+18.5 M
+16.1 G
+83.4
+
+Table 7: Performance of MobileViTv2 on the ImageNet-21k-P validation set.
+
+Width factor α
+# Params ↓
+FLOPs ↓
+Top-1 ↑
+Top-5 ↑
+
+1.50
+17.9 M
+4.1 G
+44.5
+74.5
+1.75
+22.7 M
+5.5 G
+45.8
+75.8
+2.00
+28.1 M
+7.2 G
+46.4
+76.6
+
+80
+
+75
+
+Top-1 accuracy (%)
+
+70
+
+65
+
+Mobilenetv1
+MobileNetv2
+MobileNetv3
+ShuffleNetv2
+ESPNetv2
+MobileViTv2 (Ours)
+
+60
+
+55
+
+0
+1
+2
+3
+4
+5
+6
+7
+8
+# Parameters (in million)
+
+(a) Comparison with light-weight CNNs
+
+80
+
+78
+
+76
+
+Top-1 accuracy (%)
+
+74
+
+72
+
+DeIT
+ConViT
+Mobile-former
+CrossViT
+LocalViT
+T2T
+MobileViTv2 (Ours)
+
+70
+
+68
+
+66
+
+64
+
+2
+4
+6
+8
+10
+# Parameters (in million)
+
+(b) Comparison with light-weight ViTs
+
+Figure 7: Comparison with light-weight CNN- and ViT-based models. MobileViTv2 is smaller
+and better, which is desirable for mobile devices.
+
+C
+Comparisons with light-weight networks on the ImageNet-1k dataset
+
+Comparison with light-weight CNNs. Fig. 7a shows that MobileViTv2 outperforms light-weight CNNs
+across different network sizes (MobileNetv1 [27], MobileNetv2 [24], ShufﬂeNetv2 [37], ESPNetv2 [49], and
+MobileNetv3 [25]).
+
+Comparison with light-weight ViTs.
+Fig. 7b shows that MobileViTv2 achieves better performance than
+previous light-weight ViT-based models acorss different network sizes (DeIT [2], T2T [50], CrossViT [51],
+LocalViT [52], ConViT [53], and Mobile-former [35]).
+
+D
+Visualizations of separable self-attention scores
+
+The MobileViTv2 block, Fig. 6, unfolds the input x ∈Rd×H×W to obtain xu ∈Rd,×M×N, where N = HW
+
+hw
+are the number of patches, each patch with width w and height h (M = hw pixels per patch). This unfolded
+feature map is fed to separable self-attention module to learn non-local representations. To better understand
+how separable self-attention processes xu, we visualize context scores cs.
+
+14
+
+================================================================================
+===== PAGE 15 =====
+================================================================================
+
+Input Image
+
+Context score map cm at an output stride of 8
+
+Context score map cm at an output stride of 16
+
+Context score map cm at an output stride of 32
+
+(a)
+
+Input Image
+
+Context score map cm at an output stride of 8
+
+Context score map cm at an output stride of 16
+
+Context score map cm at an output stride of 32
+
+(c)
+
+Input Image
+
+Context score map cm at an output stride of 8
+
+Context score map cm at an output stride of 16
+
+Context score map cm at an output stride of 32
+
+(b)
+
+Input Image
+
+Context score map cm at an output stride of 8
+
+Context score map cm at an output stride of 16
+
+Context score map cm at an output stride of 32
+
+(d)
+
+Figure 8: Layer-wise visualization of context score maps cm at different output strides. Recall that
+MobileViTv2 (Fig. 6 and Table 5) applies B = 2, B = 4, and B = 3 separable self-attention layers
+at an output strides of 8, 16, and 32 respectively. Therefore, we have 2, 4, and 8 context score maps
+at an output stride of 8, 16, and 32 respectively
+
+15
+
+================================================================================
+===== PAGE 16 =====
+================================================================================
+
+The separable self-attention in MobileViTv2 block computes context scores cs for M pixels simultaneously
+across N patches. Therefore, cs has a dimensions of M × N. To visualize context scores, we fold cs ∈RM×N
+
+to the same spatial dimensions as the input and obtain context score map cm ∈RH×W . For ease of visualization,
+we scale cm using min-max normalization.
+
+The context score maps for different input images at different output strides of MobileViTv2 model are
+shown in Fig. 8. These visualizations show that the proposed separable self-attention method is able to (1)
+aggregate information from entire image under different settings, including complex backgrounds, illumination
+& view-point changes, and different objects, and (2) learn high-, mid-, and low-level representations.
+
+E
+MobileViTv2’s ablation studies on the ImageNet-1k dataset
+
+In this section, we study the effect on different methods on the performance of MobileViTv2 models, including
+augmentation methods.
+
+Standard vs. advanced augmentation
+We study two different augmentation methods: (1) standard
+augmentation that uses Inception-style augmentation [54], i.e., random resized cropping and horizontal ﬂipping
+and (2) advanced augmentation that uses RandAugment [55], CutMix [56], MixUp [57], and RandomErase
+[58] along with standard augmentation methods. The effect of these augmentations on the performance
+of MobileViTv2 is shown in Figure 9. Smaller models (< 4.5 million parameters) beneﬁt from standard
+augmentation while larger models (≥4.5 million parameters) beneﬁt from advanced augmentation. For
+simplicity, we use advanced augmentation for all variants of MobileViTv2 in this paper.
+
+Loss functions
+CutMix and Mixup augmentations mixes the samples in a batch. As a result, each sample
+has multiple labels. Therefore, in presence of these augmentations, ImageNet classiﬁcation can be thought as a
+multi-label classiﬁcation task. Similar to [59], we trained MobileViTv2 by minimizing binary cross-entropy
+loss. Unlike [59], we did not observe any improvements in the performance when cross-entropy loss with label
+smoothing is replaced with binary cross-entropy loss. Therefore, we use cross-entropy with label smoothing for
+training MobileViTv2 models.
+
+Effect of multiple latent tokens
+Similar to multi-head attention in transformers, the proposed separable
+self-attention can have multiple latent tokens. When we changed the number of latent tokens from 1 to 8, the
+performance improvements on the ImageNet-1k dataset were negligible (within ±0.1 top-1 accuracy). Therefore,
+we use only one latent token in our experiments.
+
+We note that changing the number of heads from 4 to 1 in multi-headed self-attention in the transformer block of
+the MobileViTv1-S architecture dropped the top-1 accuracy by 0.7%. This observation is similar to Vaswani
+et al. [5], who also found that multiple heads in multi-headed self-attention improve transformers performance
+on the task of neural machine translation.
+
+Improving FLOP-efﬁciency via pixel- and patch-sampling
+The MobileViTv1 model [4] unfolds an
+input feature map into N patches, each patch with M = hw pixels and applies a transformer block for each
+pixel in a patch independently, where h and w are patch’s height and width respectively. Because pixels in a
+patch are spatially correlated, one can sub-sample m pixels from M pixels and learn non-local representations
+by applying self-attention layers on m pixels only. Such sub-sampling methods should help in reducing model
+FLOPs.
+
+82
+
+80
+
+Top-1 accuracy (in %)
+
+78
+
+76
+
+74
+
+72
+
+70
+
+Standard
+Advanced
+
+0.5
+2.5
+4.5
+6.5
+8.5 10.5 12.5 14.5 16.5 18.5
+Parameters (in millions)
+
+Figure 9: Impact of data augmentation on the performance of MobileViTv2 models on the
+ImageNet-1k dataset. For smaller models (< 4.5 million parameters), standard augmentation works
+best while larger models (≥4.5 million parameters) beneﬁt from advanced augmentation.
+
+16
+
+================================================================================
+===== PAGE 17 =====
+================================================================================
+
+We tried following sampling methods at pixel- as well as patch-level:
+
+• Random sampling, wherein m pixels (or n patches) from M pixels (or N patches) are randomly selected
+during training and uniformly during validation.
+
+• Top-m (or top-n) sampling, wherein top-m pixels (or top-n patches) are selected based on their magnitude
+computed using L2 norm.
+
+• Uniform sampling, wherein m pixels (or n patches) are sampled uniformly from M pixels (or N patches).
+
+We found that these methods can reduce the FLOPs by 1.2× to 1.6× with little or no drop in top-1 accuracy
+on the ImageNet-1k dataset for both MobileViTv1 (with multi-headed self-attention) and MobileViTv2 (with
+the proposed separable self-attention) models. However, these improvements in FLOPs did not translate to
+latency improvements on a mobile device. In fact, models with these sampling methods were signiﬁcantly slower
+than the models without these methods. The high-latency of models with these sampling methods on mobile
+devices can be attributed to their high memory access cost, as these methods change the memory order of tensor.
+Because of their high-latency on mobile devices, we did not use these methods in the MobileViTv2 model.
+
+F
+MobileViTv2 training conﬁgurations
+
+Conﬁgurations for training and ﬁnetuning MobileViTv2-2.0 on the ImageNet-1k and ImageNet-21k-P datasets
+are given in Table 8 and Table 9 respectively while conﬁgurations for ﬁnetuning MobileViTv2 on downstream
+tasks are given in Table 10.
+
+Training conﬁg
+MobileViTv2-2.0
+
+Dataset
+ImageNet-1k
+ImageNet-21k-P
+# Training samples
+1.28 M
+11 M
+# Validation samples
+50 k
+523 k†
+Train resolution
+256 × 256
+256 × 256
+Val resolution
+256 × 256
+256 × 256
+
+RandAug
+
+
+CutMix
+
+
+MixUp
+
+
+Random resized crop
+
+
+Random horizontal ﬂip
+
+
+Random erase
+
+
+Stochastic depth
+
+
+
+Label smoothing
+
+
+Loss
+CE
+CE
+Optimizer
+AdamW
+AdamW
+Weight decay
+0.05
+0.05
+
+Scheduler
+Cosine
+Cosine
+Warm-up iterations
+20 k
+None
+Warm-up init LR
+1e−6
+None
+Warm-up scheduler
+Linear
+None
+Base LR
+0.002
+0.0003
+Epochs
+300
+80
+Batch size
+1024
+4096
+Layer-wise LR decay
+
+
+
+Grad. clip
+10
+10
+Exp. moving average
+
+
+Weight init
+Random
+ImageNet-1k
+Table 8: Conﬁguration for training MobileViTv2-2.0 on the ImageNet-1k/22k-P datasets. † The
+validation set in ImageNet-21k-P does not overlap with ImageNet-1k validation set, and is created
+following Ridnik et al. [33].
+
+17
+
+================================================================================
+===== PAGE 18 =====
+================================================================================
+
+Training conﬁg
+MobileViTv2-2.0
+
+Dataset
+ImageNet-1k
+ImageNet-1k
+ImageNet-1k
+# Training samples
+1.28 M
+1.28 M
+1.28 M
+# Validation samples
+50 k
+50 k
+50 k
+Train resolution
+384 × 384
+256 × 256
+384 × 384
+Val resolution
+384 × 384
+256 × 256
+384 × 384
+Weight init
+ImageNet-1k
+ImageNet-21k-P
+ImageNet-21k-P-1k†
+
+RandAug
+
+
+
+CutMix
+
+
+
+MixUp
+
+
+
+Random resized crop
+
+
+
+Random horizontal ﬂip
+
+
+
+Random erase
+
+
+
+Stochastic depth
+
+
+
+
+Label smoothing
+
+
+
+Loss
+CE
+CE
+CE
+Optimizer
+SGD
+SGD
+SGD
+Weight decay
+4e−5
+4e−5
+4e−5
+
+Scheduler
+Fixed
+Cosine
+Fixed
+Warm-up iterations
+None
+None
+None
+Warm-up init LR
+None
+None
+None
+Warm-up scheduler
+None
+None
+None
+Base LR
+0.001
+0.01
+0.001
+Epochs
+10
+50
+10
+Batch size
+128
+256
+128
+Layer-wise LR decay
+
+
+
+
+Grad. clip
+10
+10
+10
+Exp. moving average
+
+
+
+Table 9: Conﬁguration for ﬁnetuning MobileViTv2-2.0 on the ImageNet-1k dataset. Here, † denotes
+that the ImageNet-21k-P model ﬁnetuned on the ImageNet-1k dataset at 256 × 256 image resolution
+is used for initializing the weights.
+
+Training conﬁg
+SSDLite-MobileViTv2-1.75
+DeepLabv3-MobileViTv2-1.75
+DeepLabv3-MobileViTv2-1.75
+
+Dataset
+MS-COCO
+ADE20k
+PASCAL VOC 2012
+Extra Data
+None
+None
+COCO
+Task
+Detection
+Segmentation
+Segmentation
+# Training samples
+117 k
+20 k
+128 k
+# Validation samples
+5 k
+2 k
+1.45 k
+Train resolution
+320 × 320
+512 × 512
+512 × 512
+Val resolution
+320 × 320
+Shortest side 512
+Shortest side 512
+Weight init
+ImageNet-1k
+ImageNet-1k
+ImageNet-1k
+
+SSD Cropping
+
+
+
+Photometric distortion
+
+
+
+Random horizontal ﬂip
+
+
+
+Resize
+
+
+
+Random short size resize
+
+
+
+Random Crop
+
+
+
+Random Gaussian blur
+
+
+
+Random rotation
+
+
+
+
+Loss
+Smooth L1 + CE
+CE
+CE
+Optimizer
+AdamW
+SGD
+AdamW
+Weight decay
+0.05
+1e−4
+0.05
+
+Scheduler
+Cosine
+Cosine
+Cosine
+Warm-up iterations
+500
+None
+500
+Warm-up init LR
+9e−5
+None
+5e−5
+Warm-up scheduler
+Linear
+None
+Linear
+Base LR
+0.0009
+0.02
+0.0005
+Epochs
+200
+120
+50
+Batch size
+128
+16
+128
+Layer-wise LR decay
+
+
+
+
+Grad. clip
+10
+10
+10
+Exp. moving average
+
+
+
+Table 10: Conﬁguration for ﬁnetuning MobileViTv2 on downstream tasks. For Ade20k, we found
+that SGD was more stable as compared to AdamW across different MobileViTv2 conﬁgurations,
+and therefore, we used SGD for ﬁnetuning on Ade20k dataset. The conﬁgurations for MobileViTv2
+with PSPNet are the same as Deeplabv3 on both PASCAL VOC and Ade20k datasets.
+
+18

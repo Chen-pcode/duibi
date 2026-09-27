@@ -1,0 +1,491 @@
+    LB-UNet: A Lightweight Boundary-assisted
+       UNet for Skin Lesion Segmentation
+
+                      Jiahao Xu1 and Lyuyang Tong1,2,3,4B
+          1
+              School of Computer Science, Wuhan University, Wuhan, China
+                                 {Lyuyangtong}@whu.edu.cn
+2
+   National Engineering Research Center for Multimedia Software, Wuhan University
+ 3
+    Institute of Artificial Intelligence, School of Computer Science, Wuhan University
+  4
+    Hubei Key Laboratory of Multimedia and Network Communication Engineering,
+                                      Wuhan University
+
+
+
+      Abstract. Skin lesion segmentation is vital in computer-aided diagnosis
+      and treatment of skin diseases. UNet and its variants have been widely
+      utilized for skin lesion segmentation. However, resource constraints limit
+      the deployment of larger parameter models on edge devices. To address
+      this issue, we propose a novel lightweight boundary-assisted UNet (LB-
+      UNet) for skin lesion segmentation. LB-UNet incorporates the Group
+      Shuffle Attention module (GSA) to significantly reduce the model’s pa-
+      rameters and computational demands. Furthermore, to enhance the model’s
+      segmentation capability, especially in handling ambiguous boundary, LB-
+      UNet introduces the Prediction Map Auxiliary module (PMA). Briefly,
+      PMA consists of three modules: (1) Segmentation Region and Bound-
+      ary Prediction module is utilized to predict the segmentation region and
+      boundary of the decoder features; (2) GA-Based Boundary Generator
+      is employed to generate the ground truth boundary map through ge-
+      netic algorithm; (3) Prediction Information Fusion module enhances the
+      skip connection by leveraging the prediction information. By combin-
+      ing this modules, the region and boundary information is effectively in-
+      tegrated into the backbone. The experiment results on the ISIC2017
+      and ISIC2018 datasets demonstrate that LB-UNet outperforms current
+      lightweight methods. To the best of our knowledge, LB-UNet the first
+      model with a parameters count limited to 38KB and Giga-Operations
+      Per Second (GFLOPs) limited to 0.1. The codes and trained models are
+      publicly available at https://github.com/xuxuxuxuxuxjh/LB-UNet.
+
+      Keywords: Skin lesion segmentation · Lightweight · Boundary-assisted.
+
+
+1   Introduction
+In the past decades, skin cancer and its associated expenses have become a
+major public health issue [18]. According to recent data, melanomas represent
+approximately 1% of skin cancer cases but are responsible for the majority of
+skin cancer-related deaths [16]. The biggest challenge in skin cancer diagnosis
+is the lack of specialized doctors. To address this issue, an effective solution is
+2      J.Xu et al.
+
+
+
+
+Fig. 1: (a) and (b) respectively show the visualization of comparison results on
+the ISIC2017 and ISIC2018 dataset. X-axis represents parameter count, Y-axis
+represents mIoU, and the color depth indicates GFLOPs.
+
+
+the use of artificial intelligence (AI) for medicine. Deploying lightweight mod-
+els on smartphones can enable real-time diagnosis like the DermAssist [13] and
+Skinive [23] apps. Transmitting skin images to remote servers for processing is
+not allowed to protect patient privacy [18]. Therefore, lightweight models are
+needed, and transformer-based large models like [2,3,27] may no longer be suit-
+able. Lightweight skin lesion segmentation has gained significant attention in
+recent years as a crucial and challenging component of automated skin lesion
+analysis workflows [18]. Valanarasu et al. [25] proposed the UNeXt model, which
+utilizes tokenized MLP blocks instead of regular convolutional layers, reducing
+parameters and computational complexity. MALUNet [21] and its extended ver-
+sion EGE-UNet [22] introduce novel attention modules and skip connections,
+showcasing powerful segmentation performance. However, there is room for im-
+provement in terms of model parameters and segmentation accuracy, particularly
+in addressing the ambiguity of structure boundary in skin lesion segmentation.
+    In this paper, we propose a novel boundary-assisted lightweight skin lesion
+segmentation model called LB-UNet. It not only achieves a significant reduction
+in model parameters but also demonstrates excellent performance in addressing
+ambiguous boundary in skin lesion segmentation. Specifically, LB-UNet intro-
+duces two key modules: Group Shuffle Attention modules (GSA) and Predictive
+Map Auxiliary modules (PMA). On one hand, inspired by EGE-UNet [22] and
+ShuffleNet [29], we propose GSA to reduce parameters. It divides the input into
+different groups and utilizes Hadamard Product Attention within each group.
+However, unlike EGE-UNet [22], we do not change the axes of attention but
+utilize Group Shuffle operation to more effectively capture information. On the
+other hand, we introduce PMA to enhance the model’s ability to segment am-
+biguous boundary. PMA consists of three sub-modules: Segmentation Region
+and Boundary Prediction module (RBP), Prediction Information Fusion mod-
+ule (PIF), and GA-Based Boundary Generator (GBG). LB-UNet enhances its
+learning of crucial region and boundary information by comparing the predictive
+                         A Lightweight Boundary-assisted UNet (LB-UNet)          3
+
+
+
+
+Fig. 2: (a) The overview of LB-UNet; (b) The architecture of Group Shuffle
+Attention module; (c) The architecture of Prediction Information Fusion module.
+
+
+maps generated by RBP with both the ground truth and the boundary maps
+generated by GBG. RBP effectively integrates deep supervision into the segmen-
+tation model like [5,8] . In contrast to [5], which utilizes deconvolution to match
+the label size, we create feature maps through 1×1 convolutions and resize them
+to match the label size using bilinear interpolation. AD Diagnostics [8] uses deep
+supervision in upper layers for fine-tuning the model, while we employ deep su-
+pervision in intermediate layers to enhance boundary perception. PIF combines
+predictive maps with skip connections, focusing on essential region and bound-
+ary. Inspired by previous research, we improved Lee’s [11] boundary key point
+selection algorithm and proposed GBG. GBG employs a genetic algorithm in-
+stead of random selection to generate high-quality boundary key point in fewer
+iterations. Compared to the method that BAT [28] uses, which employs circles
+with a radius of 10 to calculate the lesion area, GBG is capable of adapting to
+images of different sizes.
+    In summary, our contributions can be divided into two aspects: (1) We pro-
+pose GSA and PMA, where GSA effectively reduces parameters, while PMA
+enhances the model’s segmentation capability. (2) We introduce LB-UNet, a
+lightweight skin lesion segmentation model that is the first model with parame-
+ters count below 38KB and GFLOPs below 0.1.
+
+
+2     LB-UNet
+2.1   Architecture Overview:
+The architecture of our proposed LB-UNet is illustrated in Fig.2(a). LB-UNet is
+a UNet-based model composed of an encoder, decoder and PMA. The encoder
+4       J.Xu et al.
+
+and decoder consist of six stages, with channel sizes of {8, 16, 24, 32, 48, 64}.
+The first three stages employ regular convolutional layers with a kernel size
+of 3, while the last three stages utilize GSA, which offers reduced parameters
+count and computational demands. For downsampling in the encoder, we replace
+the max-pooling operation with a 2 × 2 convolutional operation. Additionally,
+after the convolutional operation in the encoder of Stage 3, we incorporate the
+ConvLayer, which has demonstrated excellent performance in ConvUNeXt [7].
+PMA integrates well with the UNet framework, performing segmentation region
+prediction in Stages 2-6 and boundary prediction in Stages 2-4. Unlike the simple
+skip connections in UNet, LB-UNet adopts prediction-based skip connections
+and utilizes PIF to focus on the segmentation region and boundary information.
+
+2.2   Group Shuffle Attention module:
+Due to the high parameters of the convolutional layer in deep networks, we intro-
+duce the GSA to replace it, as shown in Fig. 2(b). First, we divide the input into
+four groups based on channels, and each group is processed separately, effectively
+reducing the parameters. Then, for each group, we employ linear complexity HPA
+[22] to construct an 8 × 8 shared memories [6] for information retrieval. Finally,
+we apply shuffle operation to adjust the order of groups and merge them along
+the channel dimension, followed by utilizing depth-wise separable convolution
+[10] to fuse the information.
+
+2.3   Predictive Map Auxiliary module:
+To improve the boundary segmentation capability, we propose PMA. PMA con-
+sists of three parts: RBP, PIF and GBG.
+Segmentation Region and Boundary Prediction module: We propose
+RBP, which utilizes two separate convolutional modules. One module is ded-
+icated to predicting the segmentation region, while the other module focuses
+on predicting the boundary. To preserve this prediction information, we further
+employ a residual attention scheme [26]. The above process can be expressed by
+formulas (1) to (2).
+
+                          R̂i = δ(c1×1 (F i ))       ,   B̂ i = δ(c1×1 (F i ))         (1)
+                   (
+                          Di = F i + F i × R̂i + F i × B̂ i        (i = 2, 3, 4)
+                            i     i     i        i
+                                                                                       (2)
+                          D = F + F × R̂                             (i = 5, 6)
+               i      i     i                                                      i   i
+where F i ∈ Rw ×h ×c represents the feature of i-th decoder layer, R̂i ∈ Rw ×h ×1
+                                                    i   i
+represents the predictive region feature, B̂ i ∈ Rw ×h ×1 represents the predictive
+                     i     wi ×hi ×ci
+boundary feature, D ∈ R               represents the preserved feature, δ is a sigmoid
+function, and c1×1 denotes convolution function with kernel size of 1.
+Prediction Information Fusion module: In traditional UNet [20] models, the
+encoder feature is directly added to the decoder feature through skip connections.
+Different from previous fusion methods, we design the PIF to specifically focus
+                           A Lightweight Boundary-assisted UNet (LB-UNet)               5
+
+Algorithm 1 Genetic Algorithm-Based Boundary key point selection algorithm
+ 1: Input: number of key points n, population size NP , initialize iteration count T1 ,
+    genetic iteration count T2 , crossover probability β, mutation probability γ
+ 2: Output: boundary key point set Smax with the maximum fitness.
+ 3: for i = 1, 2, ..., T1 do
+ 4:    P∗i ← randomly generate a set of n points {(x1 , y1 ), (x2 , y2 ), ..., (xn , yn )}
+ 5: end for
+ 6: Calculate fitness IOU (RGT , f (P∗i ))
+ 7: P0 ← select the Np individuals with the highest IOU (RGT , f (P∗i )).
+ 8: for t = 1, 2, ..., T2 do
+ 9:    for i = 1, 2, ..., NP do
+10:         Parent1, Parent2 ← roulette wheel selection from Pt−1 based on IOU
+11:         if rand < β then
+12:             Offspring ← crossover(Parent1, Parent2)
+13:         else
+14:             Offspring ← Parent1
+15:         end if
+16:         if rand < γ then
+17:             Offspring ← mutation(Offspring)
+18:         end if
+19:         Pti ← Offspring
+20:     end for
+21:     Calculate fitness IOU (RGT , f (Pti ))
+22:     if f (Pti ) > f (Smax ) then
+            Smax ← Pti , where i = arg max IOU (RGT , f (Pti ))
+                                                                
+23:
+24:     end if
+25: end for
+26: return Smax
+
+
+
+on the features related to segmentation region and boundary. As shown in Fig.
+2(c), the encoder feature related to segmentation region and boundary is added
+to the preserved decoder feature with specific weights, providing an additional
+contribution. The PIF module can be expressed as:
+
+        ( i−1
+         V    = Di + E i + w1i × E i × R̂i + w2i × E i × B̂ i       (i = 2, 3, 4)
+                                                                                      (3)
+              i−1     i     i
+          V         =D +E       + w1i × E i × R̂i                     (i = 5, 6)
+
+where E i represents the feature of i-th encoder layer, the result V i−1 is fed into
+(i − 1)-th decoder layer. In this paper, we set w1i to 0.5, 0.4, 0.3, 0.2, 0.1 for i
+from 2 to 6, and w2i to 0.3, 0.2, 0.1 for i from 2 to 4.
+GA-Based Boundary Generator: GBG is a module that generates a spe-
+cialized ground truth boundary map. The ground truth boundary map con-
+sists of boundary line and key point components. The boundary line compo-
+nent can be obtained by conventional edge detection algorithm [1]. For the key
+point component, we propose a GA-based boundary key point selection algo-
+rithm. First, we utilize a previous method [11] for evaluating key point. Let
+6       J.Xu et al.
+
+S = {(x1 , y1 ), (x2 , y2 ), . . . , (xn , yn )} denotes a set of n key points. The function
+f (·) is defined as connecting the points in set S sequentially to form a boundary
+region. The evaluation criterion and fitness function are based on the Intersec-
+tion Over Union (IOU ) value between the region f (S) formed by the key points
+and the ground truth region RGT . Then, we use a genetic algorithm to search
+for the key point set with the maximum IOU value. We start by randomly gen-
+erating T1 sets of key points to form an initial population P0 of size NP . Next,
+we perform T2 iterations of genetic evolution to update the population. Finally,
+the key point with the maximum IOU value among all populations is identified
+as the final answer. Algorithm 1 describes the details of the proposed genetic
+algorithm-based boundary key point selection algorithm.
+
+2.4   Loss function:
+In our study, we adopted the group loss from EGE-UNet [22] and added an
+additional boundary loss function. This modification enables LB-UNet to not
+only focus on segmentation regions but also to pay more attention to the finer
+details of boundary. Our loss function can be expressed as formulas (4) to (7).
+
+                       LSeg = LBCE (y, ŷ) + 2 × LDICE (y, ŷ),                         (4)
+              LiRegion = 0.5 × LBCE (y, BI(R̂i )) + LDICE (y, BI(R̂i ))                 (5)
+
+    LiBoundary = 0.5 × LBCE (GBG(y), BI(B̂ i )) + LDICE (GBG(y), BI(B̂ i ))             (6)
+                                 6
+                                 X                        4
+                                                          X
+              LT otal = LSeg +          λi × LiRegion +         µi × LiBoundary         (7)
+                                  i=2                     i=2
+
+where LBCE and LDICE represent binary cross-entropy and dice loss, BI denotes
+bilinear interpolation, GBG denotes GA-Based Boundary Generator. λi is the
+weight of region feature R̂i for different stage, and µi is the weight of boundary
+feature B̂ i for different stage. In this paper, we set λi to 0.5, 0.4, 0.3, 0.2, 0.1 for
+i from 2 to 6, and µi to 0.3, 0.2, 0.1 for i from 2 to 4.
+
+
+3     Experiments
+Datasets: To effectively evaluate our proposed LB-UNet model, we selected two
+commonly used skin lesion segmentation datasets, ISIC2017 [12] and ISIC2018
+[4,24]. ISIC2017 consists of 2150 dermoscopy images, while ISIC2018 contains
+2694 dermoscopy images. Consistent with prior research [21], we randomly split
+the datasets into training and testing sets at a 7:3 ratio. We normalized all the
+images and resized them to a size of 256 × 256. For the training set, we applied
+image augmentation techniques such as horizontal flipping, vertical flipping, and
+random rotation to enhance the data.
+Implementation Details: LB-UNet is implemented with Pytorch [19] frame-
+work. All experiments are performed on a single NVIDIA GeForce RTX 3090
+                         A Lightweight Boundary-assisted UNet (LB-UNet)        7
+
+
+
+
+       Fig. 3: Visualization of some predictions on the ISIC2018 dataset.
+
+
+
+GPU. We utilize AdamW [15] as the optimizer with a learning rate of 0.001
+and a weight decay of 0.01. For the scheduler, we select the CosineAnnealingLR
+[14] with a maximum number of iterations of 50 and a minimum learning rate
+of 0.00001. The batch size is set to 8, and we train LB-UNet for a total of
+300 epochs. To assess our proposed method, we employ Mean Intersection over
+Union(mIoU) and Dice similarity score(DSC) as evaluation metrics. In addition,
+Params and GFLOPs are utilized to assess the number of parameters and the
+computational complexity respectively. To generate the ground truth bound-
+ary map, we selected 6 key points as described by Lee [11]. We initialized a
+population of size 300 with 2000 random iterations, followed by 100 genetic
+iterations(n = 6, T1 = 2000, T2 = 100, Np = 300).
+Comparative results: We compared the performance of LB-UNet with the
+state-of-the-art lightweight skin lesion segmentation models on the ISIC2017
+and ISIC2018 datasets. The results are presented in Table 1. Please note that
+our focus is on comparing the models based on segmentation performance, as
+well as the number of parameters and computational complexity. In comparison
+to the current state-of-the-art model EGE-UNet [22], our model not only demon-
+strates superior segmentation performance but also reduces the number of model
+parameters by 1.4x. Additionally, taking the results on the ISIC2018 dataset as
+an example, LB-UNet achieves a 2.28% increase in mIoU and a 1.21% increase
+in DSC compared to UNeXt-S [25], while reducing the model parameters by
+11.9%. In Figure 3, we present the visualization of models’ segmentation results.
+This figure visually demonstrates the impressive boundary detail segmentation
+capabilities of LB-UNet.
+Ablation results: To demonstrate the effectiveness of the proposed modules,
+we conducted ablation experiments on the ISIC2018 dataset. In this paper, we
+adopted a six-stage U-shaped architecture with symmetric encoder and decoder
+components, referenced from MALUNet [21], as our baseline model. Each stage’s
+8       J.Xu et al.
+
+
+    Table 1: Comparative experimental results on the ISIC2017 and ISIC2018.
+Dataset      Model        Params(M)↓ GFLOPs↓             mIoU(%)↑ DSC(%)↑
+            UNet [20]         7.77     13.76                 76.98      86.99
+         MobileViTv2 [17]     1.87      0.70                 78.72      88.09
+          MobileNetv3 [9]     1.19      0.10                 77.69      87.44
+ISIC2017   UNeXt-S [25]       0.32      0.10                 78.26      87.80
+          MALUNet [21]       0.177     0.085                 78.78      88.13
+          EGE-UNet [22]      0.053    0.072               79.81±0.10 88.77±0.06
+         LB-UNet(ours)       0.038     0.098             80.13±0.41 88.86±0.28
+            UNet [20]         7.77     13.76                 77.86      87.55
+         MobileViTv2 [17]     1.87      0.70                 79.88      88.81
+          MobileNetv3 [9]     1.19      0.10                 78.55      87.98
+ISIC2018   UNeXt-S [25]       0.32      0.10                 79.09      88.33
+          MALUNet [21]       0.177     0.085                 80.25      89.04
+          EGE-UNet [22]      0.053    0.072               80.94±0.11 89.46±0.07
+         LB-UNet(ours)       0.038     0.098             81.37±0.10 89.54±0.05
+
+              Table 2: Ablation performances of the single module.
+           Model          Params(M)↓       GFLOPs↓       mIoU(%)↑     DSC(%)↑
+          Baseline           0.107           0.072         80.03       88.24
+      Baseline+GSA           0.028           0.059         80.50       88.36
+      Baseline+PMA           0.107           0.073         81.07       88.97
+    Baseline+ConvLayer       0.112           0.097         81.36       89.31
+      Baseline+Down          0.110           0.087         81.23       88.99
+
+         Table 3: Ablation performances of ground truth boundary map.
+        Boundary line Genetic KP Random KP mIoU(%)↑ DSC(%)↑
+    Model
+             ✓            ✓                  81.37   89.54
+LB-UNet      ✓                       ✓       81.29   89.44
+                          ✓                  81.20   89.48
+                                     ✓       81.18   89.29
+
+
+
+
+encoder and decoder layer consists of a convolution module with a kernel size of
+3, and the number of channels in each stage is {8, 16, 24, 36, 48, 64}. In Table 2,
+we conducted ablation experiments on each single module. Note that (1) GSA
+replaces the convolution modules in Stages 4 − 6, (2) The ConvLayer, referenced
+from ConvUNeXt [7], is only utilized in the encoder part of Stage 3. (3) The
+Down operation replaces the max-pooling layers in Stages 1 − 3 with convolution
+functions of kernel size 2. Table 3 presents the ablation results for the ground
+truth boundary maps. LB-UNet achieves better segmentation accuracy when
+using boundary maps with boundary line compared to those without boundary
+line. Using genetic key point outperforms using random key point. Please note
+that the random key point mentioned here is generated through random itera-
+tions for 40,000 times, while the genetic key point is generated through genetic
+iterations with a population size of 300 for 100 iterations.
+                            A Lightweight Boundary-assisted UNet (LB-UNet)               9
+
+4    Conclusion
+
+In this paper, we propose a lightweight model based on segmentation region
+and boundary prediction, which can be applied to mobile dermoscopes and edge
+devices. We introduce two advanced modules. GSA utilizes a linear attention
+mechanism to significantly reduce the number of parameters and computational
+complexity. PMA effectively captures information from the segmentation region,
+particularly the boundary, to enhance the segmentation accuracy. In the PMA
+module, we propose a novel boundary key point selection algorithm based on
+genetic algorithm, which produces enhanced results. Looking ahead to future
+work, our plan is to implement LB-UNet on mobile devices to achieve real-time
+segmentation detection. Additionally, LB-UNet is proposed only for skin lesion
+segmentation, and we intend to extend our efficient design to other tasks.
+Acknowledgement. This work was supported in part by the National Key
+Research and Development Program of China under Grants 2023YFC2705700,
+the National Natural Science Foundation of China under Grants 62306217 and
+62225113, the Postdoctoral Fellowship Program of CPSF under Grant Number
+GZC20231987, the China Postdoctoral Science Foundation under Grant Number
+2024T170686 and 2024M752471, the Major Program (JD) of Hubei Province
+(2023BAA017), the Innovative Research Group Project of Hubei Province under
+Grants 2024AFA017.
+
+
+Disclosure of Interests
+
+The authors declare that we have no competing interests.
+
+
+References
+
+ 1. Canny, J.: A computational approach to edge detection. IEEE Transactions on
+    pattern analysis and machine intelligence (6), 679–698 (1986)
+ 2. Cao, H., Wang, Y., Chen, J., Jiang, D., Zhang, X., Tian, Q., Wang, M.: Swin-
+    unet: Unet-like pure transformer for medical image segmentation. In: European
+    conference on computer vision. pp. 205–218. Springer (2022)
+ 3. Chen, J., Lu, Y., Yu, Q., Luo, X., Adeli, E., Wang, Y., Lu, L., Yuille, A.L., Zhou,
+    Y.: Transunet: Transformers make strong encoders for medical image segmentation.
+    arXiv preprint arXiv:2102.04306 (2021)
+ 4. Codella, N., Rotemberg, V., Tschandl, P., Celebi, M.E., Dusza, S., Gutman, D.,
+    Helba, B., Kalloo, A., Liopyris, K., Marchetti, M., et al.: Skin lesion analysis toward
+    melanoma detection 2018: A challenge hosted by the international skin imaging
+    collaboration (isic). arXiv preprint arXiv:1902.03368 (2019)
+ 5. Dou, Q., Chen, H., Jin, Y., Yu, L., Qin, J., Heng, P.A.: 3d deeply supervised net-
+    work for automatic liver segmentation from ct volumes. In: Medical Image Comput-
+    ing and Computer-Assisted Intervention–MICCAI 2016: 19th International Con-
+    ference, Athens, Greece, October 17-21, 2016, Proceedings, Part II 19. pp. 149–157.
+    Springer (2016)
+10      J.Xu et al.
+
+ 6. Guo, M.H., Liu, Z.N., Mu, T.J., Hu, S.M.: Beyond self-attention: External atten-
+    tion using two linear layers for visual tasks. IEEE Transactions on Pattern Analysis
+    and Machine Intelligence 45(5), 5436–5447 (2022)
+ 7. Han, Z., Jian, M., Wang, G.G.: Convunext: An efficient convolution neural network
+    for medical image segmentation. Knowledge-Based Systems 253, 109512 (2022)
+ 8. Hosseini-Asl, E., Gimel’farb, G., El-Baz, A.: Alzheimer’s disease diagnostics
+    by a deeply supervised adaptable 3d convolutional network. arXiv preprint
+    arXiv:1607.00556 (2016)
+ 9. Howard, A., Sandler, M., Chu, G., Chen, L.C., Chen, B., Tan, M., Wang, W., Zhu,
+    Y., Pang, R., Vasudevan, V., et al.: Searching for mobilenetv3. In: Proceedings of
+    the IEEE/CVF international conference on computer vision. pp. 1314–1324 (2019)
+10. Howard, A.G., Zhu, M., Chen, B., Kalenichenko, D., Wang, W., Weyand, T., An-
+    dreetto, M., Adam, H.: Mobilenets: Efficient convolutional neural networks for
+    mobile vision applications. arXiv preprint arXiv:1704.04861 (2017)
+11. Lee, H.J., Kim, J.U., Lee, S., Kim, H.G., Ro, Y.M.: Structure boundary preserving
+    segmentation for medical image with ambiguous boundary. In: Proceedings of the
+    IEEE/CVF conference on computer vision and pattern recognition. pp. 4817–4826
+    (2020)
+12. Li, Y., Shen, L.: Skin lesion analysis towards melanoma detection using deep learn-
+    ing network. Sensors 18(2), 556 (2018)
+13. Liu, Y., Jain, A., Eng, C., Way, D.H., Lee, K., Bui, P., Kanada, K., de Oliveira Mar-
+    inho, G., Gallegos, J., Gabriele, S., et al.: A deep learning system for differential
+    diagnosis of skin diseases. Nature medicine 26(6), 900–908 (2020)
+14. Loshchilov, I., Hutter, F.: Sgdr: Stochastic gradient descent with warm restarts.
+    arXiv preprint arXiv:1608.03983 (2016)
+15. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. arXiv preprint
+    arXiv:1711.05101 (2017)
+16. Mangione, C.M., Barry, M.J., Nicholson, W.K., Chelmow, D., Coker, T.R., Davis,
+    E.M., Donahue, K.E., Jaén, C.R., Kubik, M., Li, L., et al.: Screening for skin cancer:
+    Us preventive services task force recommendation statement. Jama 329(15), 1290–
+    1295 (2023)
+17. Mehta, S., Rastegari, M.: Separable self-attention for mobile vision transformers.
+    arXiv preprint arXiv:2206.02680 (2022)
+18. Mirikharaji, Z., Abhishek, K., Bissoto, A., Barata, C., Avila, S., Valle, E., Celebi,
+    M.E., Hamarneh, G.: A survey on deep learning for skin lesion segmentation. Med-
+    ical Image Analysis p. 102863 (2023)
+19. Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen,
+    T., Lin, Z., Gimelshein, N., Antiga, L., et al.: Pytorch: An imperative style, high-
+    performance deep learning library. Advances in neural information processing sys-
+    tems 32 (2019)
+20. Ronneberger, O., Fischer, P., Brox, T.: U-net: Convolutional networks for biomed-
+    ical image segmentation. In: Medical Image Computing and Computer-Assisted
+    Intervention–MICCAI 2015: 18th International Conference, Munich, Germany, Oc-
+    tober 5-9, 2015, Proceedings, Part III 18. pp. 234–241. Springer (2015)
+21. Ruan, J., Xiang, S., Xie, M., Liu, T., Fu, Y.: Malunet: A multi-attention and light-
+    weight unet for skin lesion segmentation. In: 2022 IEEE International Conference
+    on Bioinformatics and Biomedicine (BIBM). pp. 1150–1156. IEEE (2022)
+22. Ruan, J., Xie, M., Gao, J., Liu, T., Fu, Y.: Ege-unet: an efficient group enhanced
+    unet for skin lesion segmentation. In: International Conference on Medical Image
+    Computing and Computer-Assisted Intervention. pp. 481–490. Springer (2023)
+                           A Lightweight Boundary-assisted UNet (LB-UNet)            11
+
+23. Shpudeiko, V., Sokolov, K., Sidaruk, H.: Artificial intelligence in solving dermato-
+    logical problems. Dermatology Review/Przeglad Dermatologiczny 109(5), 361–367
+    (2022)
+24. Tschandl, P., Rosendahl, C., Kittler, H.: The ham10000 dataset, a large collection
+    of multi-source dermatoscopic images of common pigmented skin lesions. Scientific
+    data 5(1), 1–9 (2018)
+25. Valanarasu, J.M.J., Patel, V.M.: Unext: Mlp-based rapid medical image segmen-
+    tation network. In: International Conference on Medical Image Computing and
+    Computer-Assisted Intervention. pp. 23–33. Springer (2022)
+26. Wang, F., Jiang, M., Qian, C., Yang, S., Li, C., Zhang, H., Wang, X., Tang, X.:
+    Residual attention network for image classification. In: Proceedings of the IEEE
+    conference on computer vision and pattern recognition. pp. 3156–3164 (2017)
+27. Wang, H., Cao, P., Wang, J., Zaiane, O.R.: Uctransnet: rethinking the skip connec-
+    tions in u-net from a channel-wise perspective with transformer. In: Proceedings
+    of the AAAI conference on artificial intelligence. vol. 36, pp. 2441–2449 (2022)
+28. Wang, J., Wei, L., Wang, L., Zhou, Q., Zhu, L., Qin, J.: Boundary-aware trans-
+    formers for skin lesion segmentation. In: Medical Image Computing and Com-
+    puter Assisted Intervention–MICCAI 2021: 24th International Conference, Stras-
+    bourg, France, September 27–October 1, 2021, Proceedings, Part I 24. pp. 206–216.
+    Springer (2021)
+29. Zhang, X., Zhou, X., Lin, M., Sun, J.: Shufflenet: An extremely efficient convolu-
+    tional neural network for mobile devices. In: Proceedings of the IEEE conference
+    on computer vision and pattern recognition. pp. 6848–6856 (2018)

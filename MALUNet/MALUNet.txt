@@ -1,0 +1,425 @@
+                                                MALUNet: A Multi-Attention and Light-weight
+                                                   UNet for Skin Lesion Segmentation
+                                                 1st Jiacheng Ruan                  2nd Suncheng Xiang*                       3rd Mingye Xie                          4rd Ting Liu
+                                          Shanghai Jiao Tong University Shanghai Jiao Tong University Shanghai Jiao Tong University Shanghai Jiao Tong University
+                                                Shanghai, China               Shanghai, China               Shanghai, China               Shanghai, China
+                                            jackchenruan@sjtu.edu.cn xiangsuncheng17@sjtu.edu.cn         xiemingye@sjtu.edu.cn         louisa liu@sjtu.edu.cn
+
+                                                  5th Yuzhuo Fu*
+                                          Shanghai Jiao Tong University
+                                                Shanghai, China
+arXiv:2211.01784v1 [eess.IV] 3 Nov 2022
+
+
+
+
+                                                yzfu@sjtu.edu.cn
+
+
+                                             Abstract—Recently, some pioneering works have preferred
+                                          applying more complex modules to improve segmentation per-
+                                          formances. However, it is not friendly for actual clinical envi-
+                                          ronments due to limited computing resources. To address this
+                                          challenge, we propose a light-weight model to achieve competitive
+                                          performances for skin lesion segmentation at the lowest cost
+                                          of parameters and computational complexity so far. Briefly, we
+                                          propose four modules: (1) DGA consists of dilated convolution
+                                          and gated attention mechanisms to extract global and local
+                                          feature information; (2) IEA, which is based on external attention
+                                          to characterize the overall datasets and enhance the connection
+                                          between samples; (3) CAB is composed of 1D convolution and
+                                          fully connected layers to perform a global and local fusion
+                                          of multi-stage features to generate attention maps at channel
+                                          axis; (4) SAB, which operates on multi-stage features by a                   Fig. 1. Visualization of comparison results on the ISIC2018 dataset. X-axis
+                                          shared 2D convolution to generate attention maps at spatial axis.            corresponds to the number of parameters and GFLOPs, respectively (lower
+                                                                                                                       the better). Y-axis represents the mIoU (higher the better).
+                                          We combine four modules with our U-shape architecture and
+                                          obtain a light-weight medical image segmentation model dubbed
+                                          as MALUNet. Compared with UNet, our model improves the
+                                          mIoU and DSC metrics by 2.39% and 1.49%, respectively, with                  TransBTS [9], Swin-UNet [10], DS-TransUNet [11], Trans-
+                                          a 44x and 166x reduction in the number of parameters and                     Fuse [12], UTNet [13] and UTNetV2 [14] have been proposed,
+                                          computational complexity. In addition, we conduct comparison                 further improving segmentation performances.
+                                          experiments on two skin lesion segmentation datasets (ISIC2017
+                                          and ISIC2018). Experimental results show that our model                         However, the previous works still have the following prob-
+                                          achieves state-of-the-art in balancing the number of parameters,             lems. Firstly, previous studies tend to introduce more complex
+                                          computational complexity and segmentation performances. Code                 modules into UNet in exchange for improving performances.
+                                          is available at https://github.com/JCruan519/MALUNet.                        However, due to the limited memory of mobile medical
+                                             Index Terms—Light-weight model, Medical image segmenta-
+                                                                                                                       devices, many models with a large amount of parameters
+                                          tion, Attention mechanism, Mobile health
+                                                                                                                       cannot be employed well in real-world clinical scenarios.
+                                                                                                                       Secondly, medical image segmentation belongs to the layout-
+                                                                   I. I NTRODUCTION
+                                                                                                                       specific task [15]. Namely, the variance between samples is
+                                             Medical image segmentation models can assist doctors in di-               slight, but within samples is significant in the medical dataset.
+                                          agnosis and improve the efficiency of hospital operations. Most              The modules in recent works are often improved based on
+                                          existing methods are based on UNet [1], an Encoder-Decoder                   the SA module or its variants, while SA is not expert in
+                                          model with an U-shape architecture. Due to its simplicity                    modeling the relationship between samples [16]. Finally, for
+                                          and scalability advantages, plenty of improved models are                    medical image segmentation, it is imperative to fully use multi-
+                                          proposed, such as UNet++ [2], AttentionUNet [3], 3D-UNet                     stage and multi-scale information due to varying target sizes.
+                                          [4], V-Net [5], UNet3+ [6] and so on. Recently, researchers                  However, many models ignore the importance of that.
+                                          have introduced the self-attention mechanism (SA) of ViT                        In this paper, we propose four modules to solve the prob-
+                                          [7] into UNet. Some essential extensions like TransUNet [8],                 lems: (1) Dilated Gated Attention Block (DGA), which helps
+                                                                                                                       our model pay more attention to the target region by obtaining
+                                            * Suncheng Xiang and Yuzhuo Fu are the co-corresponding authors. This
+                                          work was partially supported by the National Natural Science Foundation of   global and local information. At the same time, the depthwise
+                                          China (Grant No. 61977045).                                                  separable convolution [17] further reduces the number of
+parameters and computational complexity. (2) An efficient
+external attention mechanism for the light-weight medical
+segmentation model is presented, called Inverted External
+Attention Block (IEA), which can enhance the information
+association between samples and obtain characteristics of the
+overall dataset. (3) For the acquisition of multi-stage and
+multi-scale information, attention bridge modules are proposed
+for channel and spatial axes, dubbed as Channel Attention
+Bridge Block (CAB) and Spatial Attention Bridge Block
+(SAB), which can generate corresponding attention maps.
+With the help of the modules mentioned above, we could
+drastically reduce the number of channels in our model and
+maintain a competitive segmentation effect with the minimum
+number of parameters and lowest complexity.
+   The contributions lie in three folds:
+   • Four attention modules are proposed, which could obtain
+     global and local feature information respectively, depict
+     the sample characteristics of the whole dataset, and
+     fuse multi-stage information to generate corresponding
+     attention maps at the channel and spatial levels.
+                                                                             Fig. 2. The illustration of MALUNet architecture.
+   • We present MALUNet based on our U-shape architecture
+     and four attention modules, which has the minimum
+     amount of parameters and the lowest computational com-        parallel Swin Transformers are used as encoders to attain
+     plexity.                                                      more abundant information. TransFuse [12] applies the parallel
+   • Extensive experiments are performed on ISIC2017 [18]          encoder structure of CNN and Transformer to obtain local and
+     and ISIC2018 [19] datasets. Results show that our model       global information simultaneously. UTNetV2 [14] improves
+     achieves the state-of-the-art in terms of the balance         the UTNet [13], which is a hybrid multi-level structure. Local
+     between parameters, computational complexity and seg-         modeling is introduced to reduce the dependence on large-
+     mentation performances.                                       scale data via using depthwise separable convolution as the
+                    II. R ELATED W ORKS                            projection and feed-forward network in the Transformer block.
+                                                                      The above networks are designed to improve performances
+   FCN [20] is the pioneer in image segmentation, which            while ignoring the shortcomings of heavy parameters and
+utilizes fully convolution to extract feature information. After   computational complexity, making it difficult to be applied
+that, UNet [1], an Encoder-Decoder model based on the fully        in the real medical environment. Recently, Jeya et al. pro-
+convolution, is developed for medical image segmentation and       posed UNeXt [30] based on combining MLP [31] with UNet,
+achieves terrific results.                                         which significantly reduces the number of parameters on
+   Most medical image segmentation models are improved             the premise of ensuring the segmentation performances. A
+based on UNet, such as UNet++ [2], Attention-UNet [3], Res-        light-weight model is necessary for practical applications and
+UNet [21] [22], Dense-UNet [23], etc. UNet++ replaces the          mobile health. Therefore, based on previous studies, this paper
+cropping and concatenating operation in the skip-connection        proposes a light-weight model for medical image segmenta-
+part of UNet with the convolution operation in a dense way         tion, and introduces a variety of attention modules to ensure
+to obtain better feature information and compensate for the        performances.
+information loss caused by sampling. Attention-UNet utilizes
+attention gates to control the importance of features, making                               III. M ETHODS
+it pay more attention to targets. In order to further decrease        In this section, we first introduce the four modules proposed
+the loss of information and improve performances, Res-UNet         in this paper: DGA, IEA, CAB and SAB. Afterward, we
+and Dense-UNet replace plain convolutions with Res-block in        elaborate on the proposed light-weight model, MALUNet, as
+ResNet [24] and Dense-block in DenseNet [25], respectively.        shown in Fig. 2.
+   Google transplanted the SA in natural language processing
+[26] to computer vision, and proposed ViT [7] as the backbone.     A. Dilated Gated Attention Block
+Because of its powerful feature extraction ability, researchers       Medical image segmentation belongs to dense prediction
+recently focused on how to combine ViT and its variants            tasks, and the simultaneous acquisition of global and local
+with UNet to obtain better results [27] [28]. For example,         information is crucial to improving performances. Global
+Swin-UNet [10] combines Swin Transformer [29] with UNet            information is helpful for the model to understand the overall
+and receives a better segmentation effect. DS-TransUNet            lesion structure and its relationship with the background,
+[11] utilizes patches of different scales as input, and two        making it locate the lesion area more accurately. Moreover,
+Fig. 3. Overview of the proposed DGA architecture. Note that unless                    Fig. 4. The illustration of IEA architecture.
+otherwise specified, the convolution kernel size is 3 × 3.
+
+                                                                          general light-weight backbone in computer vision, we propose
+local information helps to obtain the details of edges and                an inverted external attention block (IEA) for light-weight
+corners of the lesion area, making predictions more complete.             medical image segmentation model as shown in Fig. 4.
+   Therefore, DGA is proposed in this paper. As shown in Fig.                Given an input X ∈ RC×H×W , after 1 × 1 convolution and
+3, this module is composed of two sub-units: Split Dilated                reshaping operation, the size is changed to X ∈ RC×HW . We
+Conv Unit (SDC) and Gated Attention Unit (GA). SDC splits                 use Memory Unit 1 to expand the feature map fourfold to
+the feature map along the channel dimension into four parts,              obtain Att ∈ R4C×HW , and then Memory Unit 2 is applied
+and obtains the global (convolutions with dilated rates of 5              to restore the dimension, followed by reshaping operation to
+and 7) and local (convolutions with dilated rates of 1 and 2)             restore to the original feature map size. Finally, the output
+feature information through depthwise separable convolution               feature map can be obtained through a 1 × 1 convolution and
+with different dilated rates [17] [32]. Then, the concatenating           added with the residual information. It is worth noting that in
+operation is carried out in the channel dimension to restore the          IEA, we no longer fix the number of channels between two
+size of the feature map, followed by a convolution operation to           memory units as 64 as EA, but apply four times expansion.
+interact with the global and local information. Next, for GA,             The advantage is that the memory unit maps the input to
+the attention map with the same shape as the input feature is             a higher dimensional space, which makes the memory unit
+generated via depthwise separable convolution to suppress the             describe the overall feature information of the dataset more
+unimportant region of feature information transmitted by SDC,             comprehensively.
+so that model pays more attention to the vital information.
+Finally, a residual connection operation is applied to obtain             C. Channel Attention Bridge Block
+the output. The above process can be expressed by formulas                   The acquisition of multi-stage and multi-scale information
+(1) to (5).                                                               plays an essential role in segmenting targets of different sizes,
+                                                                          and the fusion of multi-stage and multi-scale information has
+                  x1 , x2 , x3 , x4 = Chunk4 (X)                   (1)    been proved to be the key to improve the performance. There-
+                                                                          fore, we propose a bridge attention module for channel level,
+  x01 , x02 , x03 , x04 = W1 (x1 ) , W2 (x2 ) , W5 (x3 ) , W7 (x4 ) (2)
+                                                                          called CAB. It is utilized to generate channel attention map
+               X 0 = W (Concat (x01 , x02 , x03 , x04 ))           (3)    by concatenating the features of different stages at channel
+                                                                          axis to better integrate information. CAB can be expressed by
+                       Att = σ (DW (X 0 ))                         (4)    formulas (6) to (10).
+           Out = DW (DW (X 0 )           Att) + W (X 0 )           (5)
+                                                                                                    t0i = GAP (ti )                          (6)
+   Where Chunk4 indicates that the input feature map is
+                                                                                                            t01 , t02 , . . . , t0s−1
+                                                                                                                                        
+                                                                                          T = Concat                                         (7)
+divided into four parts along the channel dimension, Wi rep-
+resents depthwise separable convolution with dilated rates of                                     T 0 = Conv1D(T )                           (8)
+i, Concat denotes the concatenating operation, W represents
+the plain convolution operation, σ is the sigmoid function,                                     Atti = σ (FCi (T 0 ))                        (9)
+DW indicates the depthwise separable convolution, and                                          Outi = ti + ti           Atti                (10)
+represents the element-wise multiplication.
+                                                                             Where GAP refers to global average pooling, ti represents
+B. Inverted External Attention Block                                      the feature map of different stages obtained from the encoder,
+   EAMLP [16] proposes a new attention mechanism, called                  Concat indicates concatenating operation in the channel di-
+external attention (EA), which employs two memory units                   mension, s denotes the total number of stages, Conv1D rep-
+(two Conv1D operations that share parameters) to characterize             resents 1D convolution operation, FCi is the fully connected
+the feature information of the entire dataset. Besides, inspired          layer for stage i, σ is the sigmoid function, and       is the
+by the inverted residual module in MobileNetV2 [33], a                    element-wise multiplication.
+                                                                               Fig. 6. Overview of the proposed SAB architecture.
+          Fig. 5. Overview of the proposed CAB architecture.
+                                                                     Stages 1-5 to generate the attention maps in the spatial and
+   As shown in Fig. 5, CAB is visualized by taking the five-         channel dimension. And then, we add features obtained by
+stage model (s = 5) as an example. Note that CAB subdivides          bridge attention modules with features of the decoder part to
+the multi-stage and multi-scale information fusion into local        reduce the feature semantic difference between the encoder
+information fusion (1D convolution operations) and global            and decoder while alleviating the information loss caused by
+information fusion (different fully connected layers for each        the sampling process.
+stage), to provide a more informative attention feature map.                               IV. E XPERIMENTS
+D. Spatial Attention Bridge Block                                    A. Datasets
+   CBAM [34] believes that both channel and spatial attention           In this section, we conduct extensive experiments on two
+play an essential role in suppressing irrelevant information.        public datasets of skin lesion segmentation, the International
+Therefore, inspired by CBAM, we introduced another bridge            Skin Imaging Collaboration challenge dataset (ISIC2017 and
+attention module, SAB, as shown in Fig. 6. Also, five-stage          ISIC2018) [18] [19], to train and evaluate the proposed model.
+SAB is visualized as an example. This module fuses the multi-        ISIC2017 and ISIC2018 have 2150 and 2694 dermoscopy
+stage and multi-scale information at spatial axis to generate the    images with segmentation mask labels, respectively. We ran-
+attention map for each stage.                                        domly divide datasets in a ratio of 7 : 3 as our experiments’
+   First, for each stage’s feature map, we employ average-           training and testing sets. For ISIC2017, there are 1500 images
+pooling and max-pooling operations in the channel dimension,         in training sets and 650 images in testing sets. For ISIC2018,
+and concatenate them to get the feature map with two chan-           there are 1886 images in training sets and 808 images in
+nels, while the height and width remain unchanged. Then, a           testing sets. Note that we perform comparative experiments
+shared dilated convolution operation is utilized (the dilated rate   on ISIC2017 and ISIC2018 and conduct ablation experiments
+is 3 and kernel size is 7), followed by a sigmoid function to        on ISIC2018.
+generate a spatial attention map for each stage. Finally, the        B. Implementation details
+generated spatial attention map is element-wise multiplied by           All experiments are implemented on a single NVIDIA
+the original map and added with the residual information.            GeForce RTX3080 GPU. Empirically, all images are normal-
+E. MALUNet                                                           ized and resized to 256 × 256, and we employ data augmenta-
+                                                                     tion including vertical flip, horizontal flip and random rotation.
+   After combining our attention modules and U-shape archi-
+                                                                     The loss function is BceDice loss, which can be expressed by
+tecture, our model is obtained, dubbed as MALUNet, as shown
+                                                                     formula (11). We utilize AdamW [35] as the optimizer with
+in Fig. 2.
+                                                                     an initial learning rate of 0.001. A cosine annealing learning
+   In MALUNet, a six-stage U-shape architecture is applied,
+                                                                     rate scheduler is used with a maximum number of iterations
+and the number of channels in each stage is {8, 16, 24,
+                                                                     of 50 and a minimum learning rate of 0.00001. The training
+32, 48, 64}. Based on UNet, we add one stage, and the
+                                                                     epoch is set equal to 300, and the batch size is 8.
+plain convolution operation is reduced from two to one in
+Stage 1-3. In Stage 4-6, we use IEA and DGA, which are                                 N
+arranged in series. The former depicts the overall features                        1 X
+                                                                       LBce = −          [yi log (pi ) + (1 − yi ) log (1 − pi )]
+of the dataset and the relationship between samples, and the                       N i=1
+latter acquires the global and local feature information in                                       2|X ∩ Y |                         (11)
+samples. They complement each other and make full use of                               LDice = 1 −
+                                                                                                  |X| + |Y |
+the advantages of different attention mechanisms. In addition,
+SAB-first order is employed for the sequential arrangement                        LBceDice = λ1 LBce + λ2 LDice
+of two bridge attention modules. The two bridge attention              Where N is the total number of samples, yi is the real label,
+modules can fuse the multi-stage and multi-scale features of         pi is the prediction. |X| and |Y | represent ground truth and
+prediction, respectively. λ1 and λ2 refer to the weight of two                                TABLE I
+loss functions. In this paper, both weights are taken as 1 by      C OMPARATIVE EXPERIMENTAL RESULTS ON ISIC2017 DATASET. ( BOLD
+                                                                    INDICATES THE BEST AND UNDERLINE INDICATES THE SECOND BEST.)
+default.
+C. Evaluation Metrics                                                    Model      Params ↓ GFLOPs↓ mIoU↑ DSC↑ Acc↑ Spe↑ Sen↑
+                                                                        UNet [1]       7.77    13.78 76.98 86.99 95.65 97.43 86.82
+   Five metrics including Mean Intersection over Union               TransFuse [12]   26.27    11.53 79.21 88.40 96.17 97.98 87.14
+(mIoU), Dice similarity score (DSC), Accuracy (Acc), Sensi-          UTNetV2 [14]     12.80    15.50 77.35 87.23 95.84 98.05 84.85
+tivity (Sen), Specificity (Spe) are used to measure segmenta-        UNeXt-S [30]      0.30    0.10  78.26 87.80 95.95 97.74 87.04
+tion performances. In addition, Params is utilized to indicate      MALUNet (ours)    0.175    0.083 78.78 88.13 96.18 98.47 84.78
+
+the number of parameters, and the unit is Million (M). The
+computational complexity is calculated regarding the number
+                                                                                             TABLE II
+of floating point operators (GFLOPs). Note that the Params         C OMPARATIVE EXPERIMENTAL RESULTS ON ISIC2018 DATASET. ( BOLD
+and GFLOPs of models are measured with 256 × 256 input              INDICATES THE BEST AND UNDERLINE INDICATES THE SECOND BEST.)
+size.
+                                                                         Model        Params ↓ GFLOPs↓ mIoU↑ DSC↑ Acc↑ Spe↑ Sen↑
+                 
+                                    TP                                  UNet [1]        7.77     13.78 77.86 87.55 94.05 96.69 85.86
+                 mIoU = T P +F P +F N
+                 
+                                                                     UNet++ [2]        9.16     34.90 78.31 87.83 94.02 95.75 88.65
+                 DSC = 2T P +F
+                 
+                                 2T P
+                                    P +F N                        Attention-UNet [3]   8.73     16.74 78.43 87.91 94.13 96.23 87.60
+                                 T P +T N
+                   Acc = T P +T N +F P +F N               (12)      TransFuse [12]      26.27    11.53 80.63 89.27 94.66 95.74 91.28
+                              TP                                    UTNetV2 [14]       12.80    15.50 78.97 88.25 94.32 96.48 87.60
+                   Sen = T P +F N
+                 
+                 
+                 
+                                                                      SANet [36]       23.90     5.99 79.52 88.59 94.39 95.97 89.46
+                 Spe = T N
+                 
+                                                                     UNeXt-S [30]       0.30      0.10 79.09 88.33 94.39 96.72 87.15
+                            T N +F P
+                                                                   MALUNet (ours)       0.175    0.083 80.25 89.04 94.62 96.19 89.74
+  Where T P , F P , F N , T N represent true positive, false
+positive, false negative, and true negative.
+D. Comparison with state-of-the-arts                                                        TABLE III
+                                                                     A BLATION PERFORMANCES OF UN ET UNDER DIFFERENT SETTINGS .
+   This section compares MALUNet with state-of-the-arts that
+employ different ideas to improve UNet [1] in recent years                 #Channels        Params ↓ GFLOPs↓ mIoU↑ DSC↑ Acc↑ Spe↑ Sen↑
+on ISIC2017 and ISIC2018 datasets. The experimental results           {32,64,128,256,512}     7.77     13.76 77.86 87.55 94.05 96.69 85.86
+                                                                     {16,32,64,128,160,256}   1.30      0.42 78.59 88.01 94.15 96.07 88.16
+are shown in Table I and Table II. Note that UNeXt [30],              {8,16,32,64,128,160}    0.57      0.14 78.50 87.96 94.24 96.75 86.42
+a light-weight medical image segmentation model, is based              {8,16,32,48,64,96}     0.21      0.10 78.44 87.92 94.11 96.08 87.98
+on the five-stage U-shape architecture, and the number of              {8,16,24,32,48,64}     0.11      0.07 78.22 87.77 94.09 96.32 87.15
+channels in each stage is {32, 64, 128, 160, 256} in the
+original paper. In order to compare more obviously with our
+model, we employ UNeXt-S, and its number of channels is
+                                                                   E. Ablation Studies
+{8, 16, 32, 64, 128} in our experiments, which is the default
+setting used in its official open source codes. Therefore, the           a) Determination of baseline: UNet [1] is a five-stage
+parameters and computational complexity of UNeXt-S and our         U-shape architecture model. The number of channels in each
+model are the same sizes, which is convenient to compare the       stage is {32, 64, 128, 256, 512}, and the number of plain
+performance.                                                       convolutions in each stage is two. In this paper, we change the
+   According to the results, compared with UNet, MALUNet           five-stage U-shape architecture to six stages, and the number
+still improves the performance in an all-around way. In addi-      of plain convolutions in each stage is one. Table III shows
+tion, the parameters are reduced by 44x, and the computational     the effect of baseline under different settings. It is noted that
+complexity is decreased by 166x. For ISIC2018 dataset, com-        the UNet in five-stage uses concatenating operation between
+pared with TransFuse [12], although our model is 0.38% and         encoder and decoder, and the six-stage model is element-wise
+0.23% lower in mIoU and DSC, it can not be ignored that            addition. Under the premise of considering the performance
+MALUNet is 150x and 139x lower than TransFuse in terms             and the size of model comprehensively, we utilize the six-
+of parameters and computational complexity. Compared with          stage UNet with the number of channels of {8, 16, 24, 32, 48,
+UNeXt-S in the same starting point as ours, the performance        64}, dubbed as BasicUNet (BU), to carry out the subsequent
+of MALUNet on the two datasets is better than UNeXt-S, and         ablation experiments.
+further reduces the number of parameters and computational               b) Ablation study on the single module: The ablation ex-
+complexity by 0.125M and 0.017GFLOPs. As shown in Fig.             periment of the single module is based on BasicUNet. We train
+1, it can be seen more clearly that MALUNet achieves state-        and test each proposed module on ISIC2018 dataset to prove
+of-the-art in terms of the balance between parameters, compu-      its effectiveness. Moreover, to illustrate the advantages of our
+tational complexity and segmentation performances. Besides,        IEA, we also employ EA [16] for comparison. Note that (1) the
+we visualize some results, as shown in Fig. 7, and it is evident   number of intermediate channels in EA used here is the same
+that our model achieves better performances with more precise      as the original paper, which is set to 64; (2) DGA replaces the
+edges and no hollows.                                              convolution operation in BasicUNet in Stage 4-6; (3) EA and
+                           Fig. 7. Visualization of some predictions. The red mark circles defect parts of the predictions.
+
+
+
+                         TABLE IV                                                                       TABLE V
+        A BLATION PERFORMANCES OF THE SINGLE MODULE .                         A BLATION PERFORMANCES OF FOUR MODULES . (A) REPRESENTS THE
+                                                                                CAB- FIRST ORDER AND (B) REPRESENTS THE SAB- FIRST ORDER .
+       Module     Params ↓ GFLOPs↓ mIoU↑ DSC↑ Acc↑ Spe↑ Sen↑
+   BasicUNet (BU)   0.11     0.07  78.22 87.77 94.09 96.32 87.15                    Model     Params ↓ GFLOPs↓ mIoU↑ DSC↑ Acc↑ Spe↑ Sen↑
+     BU + DGA       0.08     0.06  79.12 88.43 94.33 96.29 88.25               BU+DGA+IEA+(A)   0.247    0.097 80.35 89.10 94.71 96.57 88.93
+      BU + EA       0.15     0.08  79.31 88.46 94.44 96.65 87.57               BU+DGA+IEA+(B)   0.247    0.097 80.23 89.14 94.84 97.34 87.00
+     BU + IEA       0.18     0.09  79.77 88.75 94.58 96.77 87.76               BU+IEA+DGA+(A)   0.175    0.083 79.80 88.77 94.42 95.65 90.58
+     BU + CAB       0.12     0.07  78.98 88.26 94.36 96.69 87.12               BU+IEA+DGA+(B)   0.175    0.083 80.25 89.04 94.62 96.19 89.74
+     BU + SAB       0.11     0.07  78.61 88.02 94.24 96.60 86.92
+
+
+
+                                                                            channel attention map by fusing the multi-stage and multi-
+IEA are utilized in Stage 4-6 before the plain convolution; (4)             scale features locally and globally at channel axis; 4) Fuse the
+CAB and SAB fuse features from the encoder of Stage 1-5.                    multi-stage and multi-scale feature information, and obtain the
+As shown in Table IV, DGA can improve the performance                       corresponding spatial attention map at spatial axis. MALUNet
+while reducing the amount of parameters and computational                   is presented by combining our proposed modules and six-stage
+complexity at the same time. It can be shown that obtaining                 U-shape architecture, which is a light-weight medical image
+global and local feature information simultaneously can make                segmentation model. The comparative experiments and visual-
+the model “see” more comprehensively. In addition, the other                ization results on ISIC2017 and ISIC2018 datasets can prove
+three modules can also improve the performance while only a                 that we realize state-of-the-art in terms of the balance between
+few additional parameters are introduced.                                   parameters, computational complexity and performances. It is
+      c) Ablation study on four modules: Four modules hy-                   believed that our work provides new enlightenment for the
+brid ablation experiment on ISIC2018 is utilized to deter-                  subsequent development of light-weight medical image seg-
+mine the best form of MALUNet. The ablation experiment                      mentation models. However, the limitation is that MALUNet
+results are shown in Table V. After combining the four                      is proposed only for skin lesion segmentation. Therefore,
+modules with BasicUNet (BU), although the performance of                    we will improve performances through pruning and neural
+BU+DGA+IEA+(B) is the best, the starting point of this                      architecture search methods and make our model applicable
+paper is to design a light-weight medical image segmentation                to other diseases in future work.
+model by balancing the relationship between the parame-
+ters, computational complexity and performances. Therefore,                                               R EFERENCES
+BU+IEA+DGA+(B) is finally selected as MALUNet in this
+                                                                              [1] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks
+paper.                                                                            for biomedical image segmentation,” in International Conference on
+                                                                                  Medical image computing and computer-assisted intervention. Springer,
+                       V. C ONCLUSION                                             2015, pp. 234–241.
+                                                                              [2] Z. Zhou, M. M. Rahman Siddiquee, N. Tajbakhsh, and J. Liang,
+   In this study, we propose four attention modules in order                      “Unet++: A nested u-net architecture for medical image segmentation,”
+to: 1) Obtain global and local feature information; 2) Depict                     in Deep learning in medical image analysis and multimodal learning
+                                                                                  for clinical decision support. Springer, 2018, pp. 3–11.
+the sample feature of the whole dataset so that the relationship              [3] O. Oktay, J. Schlemper, L. L. Folgoc, M. Lee, M. Heinrich, K. Misawa,
+between samples can be established; 3) Generate a complete                        K. Mori, S. McDonagh, N. Y. Hammerla, B. Kainz et al., “Atten-
+     tion u-net: Learning where to look for the pancreas,” arXiv preprint                a convolutional neural network,” Quantitative imaging in medicine and
+     arXiv:1804.03999, 2018.                                                             surgery, vol. 10, no. 6, p. 1275, 2020.
+ [4] Ö. Çiçek, A. Abdulkadir, S. S. Lienkamp, T. Brox, and O. Ronneberger,       [24] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image
+     “3d u-net: learning dense volumetric segmentation from sparse anno-                 recognition,” in Proceedings of the IEEE conference on computer vision
+     tation,” in International conference on medical image computing and                 and pattern recognition, 2016, pp. 770–778.
+     computer-assisted intervention. Springer, 2016, pp. 424–432.                   [25] G. Huang, Z. Liu, L. Van Der Maaten, and K. Q. Weinberger, “Densely
+ [5] F. Milletari, N. Navab, and S.-A. Ahmadi, “V-net: Fully convolutional               connected convolutional networks,” in Proceedings of the IEEE confer-
+     neural networks for volumetric medical image segmentation,” in 2016                 ence on computer vision and pattern recognition, 2017, pp. 4700–4708.
+     fourth international conference on 3D vision (3DV). IEEE, 2016, pp.            [26] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+     565–571.                                                                            Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in
+ [6] H. Huang, L. Lin, R. Tong, H. Hu, Q. Zhang, Y. Iwamoto, X. Han,                     neural information processing systems, vol. 30, 2017.
+     Y.-W. Chen, and J. Wu, “Unet 3+: A full-scale connected unet for               [27] F. Shamshad, S. Khan, S. W. Zamir, M. H. Khan, M. Hayat, F. S. Khan,
+     medical image segmentation,” in ICASSP 2020-2020 IEEE International                 and H. Fu, “Transformers in medical imaging: A survey,” arXiv preprint
+     Conference on Acoustics, Speech and Signal Processing (ICASSP).                     arXiv:2201.09873, 2022.
+     IEEE, 2020, pp. 1055–1059.                                                     [28] K. He, C. Gan, Z. Li, I. Rekik, Z. Yin, W. Ji, Y. Gao, Q. Wang, J. Zhang,
+ [7] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai,                   and D. Shen, “Transformers in medical image analysis: A review,” arXiv
+     T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly et al.,              preprint arXiv:2202.12165, 2022.
+     “An image is worth 16x16 words: Transformers for image recognition             [29] Z. Liu, Y. Lin, Y. Cao, H. Hu, Y. Wei, Z. Zhang, S. Lin, and
+     at scale,” arXiv preprint arXiv:2010.11929, 2020.                                   B. Guo, “Swin transformer: Hierarchical vision transformer using shifted
+ [8] J. Chen, Y. Lu, Q. Yu, X. Luo, E. Adeli, Y. Wang, L. Lu, A. L. Yuille, and          windows,” in Proceedings of the IEEE/CVF International Conference on
+     Y. Zhou, “Transunet: Transformers make strong encoders for medical                  Computer Vision, 2021, pp. 10 012–10 022.
+     image segmentation,” arXiv preprint arXiv:2102.04306, 2021.                    [30] J. M. J. Valanarasu and V. M. Patel, “Unext: Mlp-based rapid medical
+ [9] W. Wang, C. Chen, M. Ding, H. Yu, S. Zha, and J. Li, “Transbts:                     image segmentation network,” arXiv preprint arXiv:2203.04967, 2022.
+     Multimodal brain tumor segmentation using transformer,” in Interna-            [31] I. O. Tolstikhin, N. Houlsby, A. Kolesnikov, L. Beyer, X. Zhai, T. Un-
+     tional Conference on Medical Image Computing and Computer-Assisted                  terthiner, J. Yung, A. Steiner, D. Keysers, J. Uszkoreit et al., “Mlp-mixer:
+     Intervention. Springer, 2021, pp. 109–119.                                          An all-mlp architecture for vision,” Advances in Neural Information
+[10] H. Cao, Y. Wang, J. Chen, D. Jiang, X. Zhang, Q. Tian, and M. Wang,                 Processing Systems, vol. 34, pp. 24 261–24 272, 2021.
+     “Swin-unet: Unet-like pure transformer for medical image segmenta-             [32] F. Yu and V. Koltun, “Multi-scale context aggregation by dilated
+     tion,” arXiv preprint arXiv:2105.05537, 2021.                                       convolutions,” arXiv preprint arXiv:1511.07122, 2015.
+[11] A. Lin, B. Chen, J. Xu, Z. Zhang, G. Lu, and D. Zhang, “Ds-transunet:          [33] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov, and L.-C. Chen,
+     Dual swin transformer u-net for medical image segmentation,” IEEE                   “Mobilenetv2: Inverted residuals and linear bottlenecks,” in Proceedings
+     Transactions on Instrumentation and Measurement, 2022.                              of the IEEE conference on computer vision and pattern recognition,
+[12] Y. Zhang, H. Liu, and Q. Hu, “Transfuse: Fusing transformers and cnns               2018, pp. 4510–4520.
+     for medical image segmentation,” in International Conference on Med-           [34] S. Woo, J. Park, J.-Y. Lee, and I. S. Kweon, “Cbam: Convolutional
+     ical Image Computing and Computer-Assisted Intervention. Springer,                  block attention module,” in Proceedings of the European conference on
+     2021, pp. 14–24.                                                                    computer vision (ECCV), 2018, pp. 3–19.
+[13] Y. Gao, M. Zhou, and D. N. Metaxas, “Utnet: a hybrid transformer               [35] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,”
+     architecture for medical image segmentation,” in International Confer-              arXiv preprint arXiv:1711.05101, 2017.
+     ence on Medical Image Computing and Computer-Assisted Intervention.            [36] J. Wei, Y. Hu, R. Zhang, Z. Li, S. K. Zhou, and S. Cui, “Shallow
+     Springer, 2021, pp. 61–71.                                                          attention network for polyp segmentation,” in International Conference
+[14] Y. Gao, M. Zhou, D. Liu, and D. Metaxas, “A multi-scale transformer                 on Medical Image Computing and Computer-Assisted Intervention.
+     for medical image segmentation: Architectures, model efficiency, and                Springer, 2021, pp. 699–708.
+     benchmarks,” arXiv preprint arXiv:2203.00131, 2022.
+[15] J. Chen, T. He, W. Zhuo, L. Ma, S. Ha, and S.-H. G. Chan, “Tvconv:
+     Efficient translation variant convolution for layout-aware visual process-
+     ing,” in Proceedings of the IEEE/CVF Conference on Computer Vision
+     and Pattern Recognition, 2022, pp. 12 548–12 558.
+[16] M.-H. Guo, Z.-N. Liu, T.-J. Mu, and S.-M. Hu, “Beyond self-attention:
+     External attention using two linear layers for visual tasks,” arXiv preprint
+     arXiv:2105.02358, 2021.
+[17] A. G. Howard, M. Zhu, B. Chen, D. Kalenichenko, W. Wang,
+     T. Weyand, M. Andreetto, and H. Adam, “Mobilenets: Efficient convo-
+     lutional neural networks for mobile vision applications,” arXiv preprint
+     arXiv:1704.04861, 2017.
+[18] M. Berseth, “Isic 2017-skin lesion analysis towards melanoma detec-
+     tion,” arXiv preprint arXiv:1703.00523, 2017.
+[19] N. Codella, V. Rotemberg, P. Tschandl, M. E. Celebi, S. Dusza,
+     D. Gutman, B. Helba, A. Kalloo, K. Liopyris, M. Marchetti et al., “Skin
+     lesion analysis toward melanoma detection 2018: A challenge hosted
+     by the international skin imaging collaboration (isic),” arXiv preprint
+     arXiv:1902.03368, 2019.
+[20] J. Long, E. Shelhamer, and T. Darrell, “Fully convolutional networks
+     for semantic segmentation,” in Proceedings of the IEEE conference on
+     computer vision and pattern recognition, 2015, pp. 3431–3440.
+[21] X. Xiao, S. Lian, Z. Luo, and S. Li, “Weighted res-unet for high-quality
+     retina vessel segmentation,” in 2018 9th international conference on
+     information technology in medicine and education (ITME). IEEE, 2018,
+     pp. 327–331.
+[22] A. Khanna, N. D. Londhe, S. Gupta, and A. Semwal, “A deep residual
+     u-net convolutional neural network for automated lung segmentation in
+     computed tomography images,” Biocybernetics and Biomedical Engi-
+     neering, vol. 40, no. 3, pp. 1314–1327, 2020.
+[23] S. Cai, Y. Tian, H. Lui, H. Zeng, Y. Wu, and G. Chen, “Dense-unet: a
+     novel multiphoton in vivo cellular image segmentation model based on
